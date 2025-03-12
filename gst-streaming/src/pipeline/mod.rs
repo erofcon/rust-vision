@@ -63,55 +63,52 @@ impl VideoPipeline {
         tee_process_pad.link(&queue_process_pad)?;
 
         // Create branch for video display
-        let overlay = {
-            let queue_display = gst::ElementFactory::make("queue").build()?;
 
-            let convert = gst::ElementFactory::make("videoconvert").build()?;
+        let queue_display = gst::ElementFactory::make("queue").build()?;
 
-            let cairooverlay = gst::ElementFactory::make("cairooverlay").build()?;
+        let convert = gst::ElementFactory::make("videoconvert").build()?;
 
-            let convert_out = gst::ElementFactory::make("videoconvert").build()?;
-            let video_sink = gst::ElementFactory::make("autovideosink").build()?;
+        let cairooverlay = gst::ElementFactory::make("cairooverlay").build()?;
 
-            pipeline.add_many(&[
-                &queue_display,
-                &convert,
-                &cairooverlay,
-                &convert_out,
-                &video_sink,
-            ])?;
+        let convert_out = gst::ElementFactory::make("videoconvert").build()?;
+        let video_sink = gst::ElementFactory::make("autovideosink").build()?;
 
-            gst::Element::link_many(&[
-                &queue_display,
-                &convert,
-                &cairooverlay,
-                &convert_out,
-                &video_sink,
-            ])?;
+        pipeline.add_many(&[
+            &queue_display,
+            &convert,
+            &cairooverlay,
+            &convert_out,
+            &video_sink,
+        ])?;
 
-            let tee_display_pad = tee
-                .request_pad(&tee_src_pad_template, None, None)
-                .expect("Failed to request display pad from tee");
-            let queue_display_pad = queue_display
-                .static_pad("sink")
-                .expect("Failed to get queue_display sink pad");
-            tee_display_pad.link(&queue_display_pad)?;
+        gst::Element::link_many(&[
+            &queue_display,
+            &convert,
+            &cairooverlay,
+            &convert_out,
+            &video_sink,
+        ])?;
 
-            Some(cairooverlay)
-        };
+        let tee_display_pad = tee
+            .request_pad(&tee_src_pad_template, None, None)
+            .expect("Failed to request display pad from tee");
+        let queue_display_pad = queue_display
+            .static_pad("sink")
+            .expect("Failed to get queue_display sink pad");
+        tee_display_pad.link(&queue_display_pad)?;
 
         Ok(VideoPipeline {
             pipeline,
             app_sink,
-            overlay,
+            overlay: Some(cairooverlay),
             frame_processor: None,
         })
     }
 
     pub fn start(&mut self) -> Result<()> {
         // Draw
-        if self.overlay.is_some() {
-            // TODO: create draw method
+        if let Some(overlay) = &self.overlay {
+            overlay.connect("draw", false, move |args| None);
         }
 
         if self.frame_processor.is_some() {
@@ -151,7 +148,6 @@ impl VideoPipeline {
                                 Err(_) => return Ok(gst::FlowSuccess::Ok),
                             };
 
-                        // Вызываем пользовательский обработчик
                         if let Err(err) = processor(&frame) {
                             eprintln!("Error processing frame: {:?}", err);
                         }
