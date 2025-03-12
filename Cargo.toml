@@ -1,0 +1,4 @@
+["workspace"]
+members = [ "cli","gst-streaming", "inference", "server"]
+resolver = "2"
+

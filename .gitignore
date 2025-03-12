@@ -1,0 +1,6 @@
+target/
+models/
+video/
+.idea/
+*.mp4
+*.onnx
