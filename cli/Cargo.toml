@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 gst-streaming = { path = "../gst-streaming" }
+inference = { path = "../inference" }
 anyhow = "1.0"

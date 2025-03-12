@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ndarray = "0.16.1"
+ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
+anyhow = "1.0"

@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
-use gst::element_error;
 use gst::prelude::{
     Cast, ElementExt, ElementExtManual, GstBinExtManual, GstObjectExt, ObjectExt, PadExt,
 };
+use gst::{element_error, element_warning};
 use gst_video::VideoFrame;
 use std::sync::Arc;
 
@@ -217,11 +217,40 @@ impl VideoPipeline {
         bin.add_pad(&bin_ghost_src_pad)?;
 
         let queue_weak = queue.downgrade();
-        decode_bin.connect_pad_added(move |_, src_pad| {
+        decode_bin.connect_pad_added(move |d_bin, src_pad| {
             if let Some(queue) = queue_weak.upgrade() {
+                let (_, is_video) = {
+                    let media_type = src_pad.current_caps().and_then(|caps| {
+                        caps.structure(0).map(|s| {
+                            let name = s.name();
+                            (name.starts_with("audio/"), name.starts_with("video/"))
+                        })
+                    });
+
+                    match media_type {
+                        None => {
+                            element_warning!(
+                                d_bin,
+                                gst::CoreError::Negotiation,
+                                ("Failed to get media type from pad {}", src_pad.name())
+                            );
+
+                            return;
+                        }
+                        Some(media_type) => media_type,
+                    }
+                };
+
+                if !is_video {
+                    println!("Ignoring non-video pad");
+                    return;
+                }
+
+
                 let sink_pad = queue
                     .static_pad("sink")
                     .expect("The queue element must have a sink-pad");
+
                 if let Err(err) = src_pad.link(&sink_pad) {
                     eprintln!(
                         "Failed to link decodebin src pad to queue sink pad: {:?}",
@@ -231,7 +260,7 @@ impl VideoPipeline {
                     println!("Successfully linked decodebin src pad to queue sink pad");
                 }
             } else {
-                eprintln!("Late linking: file_src_bin queue element has been dropped");
+                eprintln!("Late linking: source_bin queue element has been dropped");
             }
         });
 
