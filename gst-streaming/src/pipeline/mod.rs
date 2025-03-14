@@ -5,6 +5,7 @@ use gst::prelude::{
 use gst::{element_error, element_warning};
 use gst_video::VideoFrame;
 use std::sync::Arc;
+use gst_app::AppSinkCallbacks;
 
 pub type FrameProcessorFn = Arc<
     dyn Fn(&VideoFrame<gst_video::video_frame::Readable>) -> Result<()> + Send + Sync + 'static,
@@ -111,52 +112,48 @@ impl VideoPipeline {
             overlay.connect("draw", false, move |args| None);
         }
 
-        if self.frame_processor.is_some() {
-            let processor = match &self.frame_processor {
-                Some(proc) => proc.clone(),
-                None => return Err(anyhow!("Frame processor not set")),
-            };
+        let processor = match &self.frame_processor {
+            Some(proc) => proc.clone(),
+            None => return Err(anyhow!("Frame processor not set")),
+        };
 
-            self.app_sink.set_callbacks(
-                gst_app::AppSinkCallbacks::builder()
-                    .new_sample(move |appsink| {
-                        let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
-                        let buffer = sample.buffer().ok_or_else(|| {
-                            element_error!(
-                                appsink,
-                                gst::ResourceError::Failed,
-                                ("Failed to get buffer from appsink")
-                            );
+        self.app_sink.set_callbacks(
+            AppSinkCallbacks::builder()
+                .new_sample(move |appsink| {
+                    let sample = match appsink.pull_sample() {
+                        Ok(sample) => sample,
+                        Err(_) => return Err(gst::FlowError::Eos),
+                    };
 
-                            gst::FlowError::Error
-                        })?;
+                    let buffer = match sample.buffer() {
+                        Some(buffer) => buffer,
+                        None => return Ok(gst::FlowSuccess::Ok),
+                    };
 
-                        let caps = match sample.caps() {
-                            Some(caps) => caps,
-                            None => return Ok(gst::FlowSuccess::Ok),
-                        };
+                    let caps = match sample.caps() {
+                        Some(caps) => caps,
+                        None => return Ok(gst::FlowSuccess::Ok),
+                    };
 
-                        let info = match gst_video::VideoInfo::from_caps(caps) {
-                            Ok(info) => info,
+                    let info = match gst_video::VideoInfo::from_caps(caps) {
+                        Ok(info) => info,
+                        Err(_) => return Ok(gst::FlowSuccess::Ok),
+                    };
+
+                    let frame =
+                        match gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info) {
+                            Ok(frame) => frame,
                             Err(_) => return Ok(gst::FlowSuccess::Ok),
                         };
 
-                        let frame =
-                            match gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info)
-                            {
-                                Ok(frame) => frame,
-                                Err(_) => return Ok(gst::FlowSuccess::Ok),
-                            };
+                    if let Err(err) = processor(&frame) {
+                        eprintln!("Error processing frame: {:?}", err);
+                    }
 
-                        if let Err(err) = processor(&frame) {
-                            eprintln!("Error processing frame: {:?}", err);
-                        }
-
-                        Ok(gst::FlowSuccess::Ok)
-                    })
-                    .build(),
-            );
-        }
+                    Ok(gst::FlowSuccess::Ok)
+                })
+                .build(),
+        );
 
         self.pipeline.set_state(gst::State::Playing)?;
 
@@ -245,7 +242,6 @@ impl VideoPipeline {
                     println!("Ignoring non-video pad");
                     return;
                 }
-
 
                 let sink_pad = queue
                     .static_pad("sink")

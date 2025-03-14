@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ndarray = "0.16.1"
 ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
+gst-video = { package = "gstreamer-video", version = "0.23.5" }
+ndarray = "0.16.1"
 anyhow = "1.0"
+image = "0.25.5"
+rayon = "1.10.0"

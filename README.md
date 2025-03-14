@@ -28,7 +28,7 @@ Rust vision is a high-performance system for real-time video processing, object 
 ```
 ┌──────────────┐    ┌──────────────┐    ┌────────────────┐    ┌────────────────┐
 │              │    │              │    │                │    │                │
-│  RTSP Stream │───►│  GStreamer   │───►│ Object Detection │───►│ Object Tracking │
+│  RTSP Stream │───►│  GStreamer   │───►│Object Detection│───►│ Object Tracking│
 │  Video Files │    │  Pipeline    │    │ (ONNX Runtime) │    │                │
 │              │    │              │    │                │    │                │
 └──────────────┘    └──────────────┘    └────────────────┘    └────────────────┘
