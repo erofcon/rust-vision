@@ -13,6 +13,8 @@ fn main() -> Result<()> {
     let model_input_width = 640;
     let model_input_height = 640;
 
+    let original_img_width = 480;
+    let original_img_height = 360;
     println!("Initializing video pipeline from: {}", video_source);
 
     let session = Inference::new(&model);
@@ -20,12 +22,18 @@ fn main() -> Result<()> {
     let mut pipeline = VideoPipeline::new(&video_source, model_input_width, model_input_height)
         .expect("Could not create video pipeline");
 
+    let detected_objects_clone = pipeline.detected_objects.clone();
+
     pipeline.set_frame_processor(move |frame| {
-        session.inference(
+        let bboxes = session.inference(
             frame,
-            model_input_width as usize,
-            model_input_height as usize,
-        );
+            original_img_width as usize,
+            original_img_height as usize,
+        )?;
+
+        if let Ok(mut detected_objects) = detected_objects_clone.lock() {
+            *detected_objects = bboxes;
+        }
 
         Ok(())
     });

@@ -550,6 +550,7 @@ dependencies = [
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",
+ "inference",
 ]
 
 [[package]]

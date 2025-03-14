@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+inference = { path = "../inference" }
 gst = { package = "gstreamer", version = "0.23.5" }
 gst-app = { package = "gstreamer-app", version = "0.23.5" }
 gst-video = { package = "gstreamer-video", version = "0.23.5" }
