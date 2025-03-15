@@ -1,3 +1,4 @@
+use std::time::Instant;
 use anyhow::Result;
 use gst_streaming::pipeline::VideoPipeline;
 use inference::Inference;
@@ -8,13 +9,13 @@ fn main() -> Result<()> {
 
     // let model = Path::new(env!("CARGO_MANIFEST_DIR")).join("../models/yolo11s.onnx");
     let model = "D:/RustRoverProjects/rust-vision/models/yolo11s.onnx";
-    let video_source = "D:/RustRoverProjects/rust-vision/video/troy.mp4";
+    let video_source = "D:/RustRoverProjects/rust-vision/videos/person.mp4";
 
     let model_input_width = 640;
     let model_input_height = 640;
 
-    let original_img_width = 480;
-    let original_img_height = 360;
+    let original_img_width = 1280;
+    let original_img_height = 720;
     println!("Initializing video pipeline from: {}", video_source);
 
     let session = Inference::new(&model);
@@ -25,6 +26,9 @@ fn main() -> Result<()> {
     let detected_objects_clone = pipeline.detected_objects.clone();
 
     pipeline.set_frame_processor(move |frame| {
+
+        // let start = Instant::now();
+
         let bboxes = session.inference(
             frame,
             original_img_width as usize,
@@ -35,6 +39,7 @@ fn main() -> Result<()> {
             *detected_objects = bboxes;
         }
 
+        // println!("Finished inference. {}",  start.elapsed().as_millis());
         Ok(())
     });
 

@@ -1,6 +1,6 @@
 pub mod utils;
 
-use crate::utils::{intersection, union, YOLOV11_CLASS_LABELS};
+use crate::utils::{intersection, union};
 use anyhow::Result;
 use gst_video::{VideoFrame, VideoFrameExt};
 use ndarray::{s, Array, Axis, IxDyn};
@@ -9,6 +9,7 @@ use ort::inputs;
 use ort::session::Session;
 use rayon::prelude::*;
 use std::sync::Arc;
+use std::time::Instant;
 use utils::BoundingBox;
 
 pub struct Inference {
@@ -41,9 +42,10 @@ impl Inference {
         frame: &VideoFrame<gst_video::video_frame::Readable>,
         original_img_width: usize,
         original_img_height: usize,
-    ) -> Result<Vec<(BoundingBox, f32)>> {
+    ) -> Result<Vec<(BoundingBox, usize, f32)>> {
+        let start = Instant::now();
         let image = Self::prepare_image(frame)?;
-
+        println!("Processing in {} ms", start.elapsed().as_millis());
         let input = inputs!["images"=>image]?;
 
         let outputs = self.session.run(input)?;
@@ -53,61 +55,69 @@ impl Inference {
             .t()
             .into_owned();
 
-        Self::process_output(output, original_img_width, original_img_height)
+        let result = Self::process_output(output, original_img_width, original_img_height);
+
+        result
     }
 
     fn process_output(
         output: Array<f32, IxDyn>,
         original_img_width: usize,
         original_img_height: usize,
-    ) -> Result<Vec<(BoundingBox, f32)>> {
-        let mut boxes = Vec::new();
+    ) -> Result<Vec<(BoundingBox, usize, f32)>> {
+        let scale_x = original_img_width as f32 / 640.0;
+        let scale_y = original_img_height as f32 / 640.0;
+        let prob_threshold = 0.35;
+        let iou_threshold = 0.7;
+
         let output = output.slice(s![.., .., 0]);
 
-        for row in output.axis_iter(Axis(0)) {
-            let row: Vec<_> = row.iter().copied().collect();
-            let (class_id, prob) = row
-                .iter()
-                .skip(4)
-                .enumerate()
-                .map(|(index, value)| (index, *value))
-                .reduce(|accum, row| if row.1 > accum.1 { row } else { accum })
-                .unwrap();
-            if prob < 0.35 {
-                continue;
-            }
+        let mut boxes: Vec<(BoundingBox, usize, f32)> = output
+            .axis_iter(Axis(0))
+            .into_par_iter()
+            .filter_map(|row| {
+                row.iter()
+                    .skip(4)
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                    .and_then(|(class_id, &prob)| {
+                        if prob < prob_threshold {
+                            None
+                        } else {
+                            let xc = row[0_usize] * scale_x;
+                            let yc = row[1_usize] * scale_y;
+                            let w = row[2_usize] * scale_x;
+                            let h = row[3_usize] * scale_y;
+                            Some((
+                                BoundingBox {
+                                    x1: xc - w / 2.0,
+                                    y1: yc - h / 2.0,
+                                    x2: xc + w / 2.0,
+                                    y2: yc + h / 2.0,
+                                },
+                                class_id,
+                                prob,
+                            ))
+                        }
+                    })
+            })
+            .collect();
 
-            let xc = row[0] / 640. * (original_img_width as f32);
-            let yc = row[1] / 640. * (original_img_height as f32);
-            let w = row[2] / 640. * (original_img_width as f32);
-            let h = row[3] / 640. * (original_img_height as f32);
-            boxes.push((
-                BoundingBox {
-                    x1: xc - w / 2.,
-                    y1: yc - h / 2.,
-                    x2: xc + w / 2.,
-                    y2: yc + h / 2.,
-                },
-                // class_id,
-                prob,
-            ));
+        boxes.sort_unstable_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
+
+        let mut selected = Vec::with_capacity(boxes.len());
+        boxes.reverse();
+
+        while let Some(current) = boxes.pop() {
+            selected.push(current.clone());
+
+            boxes.retain(|b| {
+                let iou = intersection(&current.0, &b.0) / union(&current.0, &b.0);
+                iou <= iou_threshold
+            });
         }
 
-        boxes.sort_by(|box1, box2| box2.1.total_cmp(&box1.1));
-        let mut result = Vec::new();
-
-        while !boxes.is_empty() {
-            result.push(boxes[0]);
-            boxes = boxes
-                .iter()
-                .filter(|box1| {
-                    intersection(&boxes[0].0, &box1.0) / union(&boxes[0].0, &box1.0) < 0.7
-                })
-                .copied()
-                .collect();
-        }
-
-        Ok(result)
+        Ok(selected)
     }
 
     fn prepare_image(
@@ -115,36 +125,38 @@ impl Inference {
     ) -> Result<Array<f32, ndarray::Dim<[usize; 4]>>> {
         let frame_width = frame.width() as usize;
         let frame_height = frame.height() as usize;
-
         let channel_size = frame_width * frame_height;
-        let total_size = 1 * 3 * frame_height * frame_width;
+        let total_size = 3 * channel_size;
         let mut flat_data = vec![0.0f32; total_size];
 
         let stride = frame.plane_stride()[0] as usize;
         let data = frame.plane_data(0)?;
 
-        let r_offset = 0;
-        let g_offset = channel_size;
-        let b_offset = 2 * channel_size;
+        let (r_channel, rest) = flat_data.split_at_mut(channel_size);
+        let (g_channel, b_channel) = rest.split_at_mut(channel_size);
 
-        for y in 0..frame_height {
-            let row_offset = y * stride;
-            let y_offset = y * frame_width;
+        let r_rows = r_channel.par_chunks_mut(frame_width);
+        let g_rows = g_channel.par_chunks_mut(frame_width);
+        let b_rows = b_channel.par_chunks_mut(frame_width);
 
-            for x in 0..frame_width {
-                let pixel_pos = row_offset + x * 3;
-                let dest_pos = y_offset + x;
-
-                if pixel_pos + 2 < data.len() {
-                    flat_data[r_offset + dest_pos] = data[pixel_pos] as f32 / 255.0;
-                    flat_data[g_offset + dest_pos] = data[pixel_pos + 1] as f32 / 255.0;
-                    flat_data[b_offset + dest_pos] = data[pixel_pos + 2] as f32 / 255.0;
+        r_rows
+            .zip(g_rows)
+            .zip(b_rows)
+            .enumerate()
+            .for_each(|(y, ((r_row, g_row), b_row))| {
+                let row_offset = y * stride;
+                for x in 0..frame_width {
+                    let pixel_pos = row_offset + x * 3;
+                    // Защищаемся от выхода за границы data
+                    if pixel_pos + 2 < data.len() {
+                        r_row[x] = data[pixel_pos] as f32 / 255.0;
+                        g_row[x] = data[pixel_pos + 1] as f32 / 255.0;
+                        b_row[x] = data[pixel_pos + 2] as f32 / 255.0;
+                    }
                 }
-            }
-        }
+            });
 
         let input = Array::from_shape_vec((1, 3, frame_height, frame_width), flat_data)?;
-
         Ok(input)
     }
 }

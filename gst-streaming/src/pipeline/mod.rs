@@ -13,7 +13,7 @@ pub type FrameProcessorFn = Arc<
 >;
 
 pub struct VideoPipeline {
-    pub detected_objects: Arc<Mutex<Vec<(BoundingBox, f32)>>>,
+    pub detected_objects: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
     pipeline: gst::Pipeline,
     app_sink: gst_app::AppSink,
     overlay: Option<gst::Element>,
@@ -119,9 +119,8 @@ impl VideoPipeline {
                     .get::<&cairo::Context>()
                     .expect("Не удалось получить cairo context");
 
-                // Захватываем данные с обнаруженными объектами
                 if let Ok(detected_objects) = detected_objects.lock() {
-                    for (bbox, confidence) in detected_objects.iter() {
+                    for (bbox, _, confidence) in detected_objects.iter() {
                         cr.set_source_rgb(1.0, 0.0, 0.0);
                         cr.set_line_width(2.0);
 
@@ -132,63 +131,11 @@ impl VideoPipeline {
                             (bbox.y2 - bbox.y1) as f64,
                         );
                         cr.stroke().expect("Failed to stroke");
-
-                        // let w = bbox.x2 - bbox.x1;
-                        // let h = bbox.y2 - bbox.y1;
-                        // // opencv::imgproc::rectangle(
-                        // //     &mut original_image,
-                        // //     opencv::core::Rect::new(
-                        // //         bb.0.x1 as i32, // x center
-                        // //         bb.0.y1 as i32, // y center
-                        // //         w as i32,
-                        // //         h as i32,
-                        // //     ),
-                        // //     red_color,
-                        // //     2,
-                        // //     opencv::imgproc::LINE_8,
-                        // //     0,
-                        // // )?;
-                        // //
-                        // // Рисуем прямоугольник вокруг объекта
-                        // cr.rectangle(
-                        //     bbox.x1 as f64,
-                        //     bbox.y1 as f64,
-                        //     (bbox.x2 - bbox.x1) as f64,
-                        //     (bbox.y2 - bbox.y1) as f64,
-                        // );
-                        // cr.stroke().expect("Failed to stroke");
-                        //
-                        // // Преобразуем координаты в f64
-                        // // let x = bbox.x1 as f64;
-                        // // let y = bbox.y1 as f64;
-                        // // let width = (bbox.x2 - bbox.x1) as f64;
-                        // // let height = (bbox.y2 - bbox.y1) as f64;
-                        // //
-                        // // // Сохраняем состояние контекста
-                        // // cr.save().expect("Не удалось сохранить состояние cairo");
-                        // //
-                        // // // Настраиваем стиль: красный цвет и толщина линии 2.0
-                        // // cr.set_source_rgb(1.0, 0.0, 0.0);
-                        // // cr.set_line_width(2.0);
-                        // //
-                        // // // Рисуем прямоугольник
-                        // // cr.rectangle(x, y, width, height);
-                        // // cr.stroke().expect("Не удалось отрисовать прямоугольник");
-                        //
-                        // // При желании можно добавить отрисовку текста (например, уверенности)
-                        // // let label = format!("{:.2}", confidence);
-                        // // cr.move_to(x, y - 5.0);
-                        // // cr.show_text(&label).expect("Не удалось отрисовать текст");
-                        //
-                        // // Восстанавливаем состояние контекста
-                        // cr.restore().expect("Не удалось восстановить состояние cairo");
+                        let label = format!("{:.2}", confidence);
+                        cr.move_to(bbox.x1 as f64, bbox.y1 as f64 - 5.0);
+                        cr.show_text(&label).expect("Не удалось отрисовать текст");
                     }
                 }
-
-                // if let Ok(detected_objects) = detected_objects.lock(){
-                //
-                //
-                // }
 
                 None
             });
