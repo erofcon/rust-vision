@@ -9,7 +9,6 @@ use ort::inputs;
 use ort::session::Session;
 use rayon::prelude::*;
 use std::sync::Arc;
-use std::time::Instant;
 use utils::BoundingBox;
 
 pub struct Inference {
@@ -43,9 +42,8 @@ impl Inference {
         original_img_width: usize,
         original_img_height: usize,
     ) -> Result<Vec<(BoundingBox, usize, f32)>> {
-        let start = Instant::now();
         let image = Self::prepare_image(frame)?;
-        println!("Processing in {} ms", start.elapsed().as_millis());
+
         let input = inputs!["images"=>image]?;
 
         let outputs = self.session.run(input)?;

@@ -1,3 +1,5 @@
+use crate::discover;
+use crate::discover::FileInfo;
 use anyhow::{anyhow, Result};
 use gst::element_warning;
 use gst::prelude::{
@@ -13,7 +15,8 @@ pub type FrameProcessorFn = Arc<
 >;
 
 pub struct VideoPipeline {
-    pub detected_objects: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+    detected_objects: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+    file_info: Arc<Mutex<FileInfo>>,
     pipeline: gst::Pipeline,
     app_sink: gst_app::AppSink,
     overlay: Option<gst::Element>,
@@ -23,6 +26,8 @@ pub struct VideoPipeline {
 impl VideoPipeline {
     pub fn new(path: &str, model_input_width: i32, model_input_height: i32) -> Result<Self> {
         gst::init()?;
+
+        let file_info = discover::discover(&path)?;
 
         let pipeline = gst::Pipeline::new();
 
@@ -102,6 +107,7 @@ impl VideoPipeline {
 
         Ok(VideoPipeline {
             detected_objects: Arc::new(Mutex::new(Vec::new())),
+            file_info: Arc::new(Mutex::new(file_info)),
             pipeline,
             app_sink,
             overlay: Some(cairooverlay),
@@ -214,6 +220,14 @@ impl VideoPipeline {
         F: Fn(&VideoFrame<gst_video::video_frame::Readable>) -> Result<()> + Send + Sync + 'static,
     {
         self.frame_processor = Some(Arc::new(processor));
+    }
+
+    pub fn detected_objects(&self) -> Arc<Mutex<Vec<(BoundingBox, usize, f32)>>> {
+        Arc::clone(&self.detected_objects)
+    }
+
+    pub fn file_info(&self) -> Arc<Mutex<FileInfo>> {
+        Arc::clone(&self.file_info)
     }
 
     fn create_source(path: &str) -> Result<gst::Element> {
