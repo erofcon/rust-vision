@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
+use gst::element_warning;
 use gst::prelude::{
     Cast, ElementExt, ElementExtManual, GstBinExtManual, GstObjectExt, ObjectExt, PadExt,
 };
-use gst::{element_error, element_warning};
 use gst_app::AppSinkCallbacks;
 use gst_video::VideoFrame;
 use inference::utils::BoundingBox;

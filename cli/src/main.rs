@@ -1,4 +1,3 @@
-use std::time::Instant;
 use anyhow::Result;
 use gst_streaming::pipeline::VideoPipeline;
 use inference::Inference;
@@ -26,7 +25,6 @@ fn main() -> Result<()> {
     let detected_objects_clone = pipeline.detected_objects.clone();
 
     pipeline.set_frame_processor(move |frame| {
-
         // let start = Instant::now();
 
         let bboxes = session.inference(
