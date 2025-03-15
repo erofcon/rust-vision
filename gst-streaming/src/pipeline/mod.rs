@@ -1,16 +1,22 @@
+use crate::discover;
+use crate::discover::FileInfo;
 use anyhow::{anyhow, Result};
-use gst::element_error;
+use gst::element_warning;
 use gst::prelude::{
     Cast, ElementExt, ElementExtManual, GstBinExtManual, GstObjectExt, ObjectExt, PadExt,
 };
+use gst_app::AppSinkCallbacks;
 use gst_video::VideoFrame;
-use std::sync::Arc;
+use inference::utils::BoundingBox;
+use std::sync::{Arc, Mutex};
 
 pub type FrameProcessorFn = Arc<
     dyn Fn(&VideoFrame<gst_video::video_frame::Readable>) -> Result<()> + Send + Sync + 'static,
 >;
 
 pub struct VideoPipeline {
+    detected_objects: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+    file_info: Arc<Mutex<FileInfo>>,
     pipeline: gst::Pipeline,
     app_sink: gst_app::AppSink,
     overlay: Option<gst::Element>,
@@ -20,6 +26,8 @@ pub struct VideoPipeline {
 impl VideoPipeline {
     pub fn new(path: &str, model_input_width: i32, model_input_height: i32) -> Result<Self> {
         gst::init()?;
+
+        let file_info = discover::discover(&path)?;
 
         let pipeline = gst::Pipeline::new();
 
@@ -63,104 +71,124 @@ impl VideoPipeline {
         tee_process_pad.link(&queue_process_pad)?;
 
         // Create branch for video display
-        let overlay = {
-            let queue_display = gst::ElementFactory::make("queue").build()?;
 
-            let convert = gst::ElementFactory::make("videoconvert").build()?;
+        let queue_display = gst::ElementFactory::make("queue").build()?;
 
-            let cairooverlay = gst::ElementFactory::make("cairooverlay").build()?;
+        let convert = gst::ElementFactory::make("videoconvert").build()?;
 
-            let convert_out = gst::ElementFactory::make("videoconvert").build()?;
-            let video_sink = gst::ElementFactory::make("autovideosink").build()?;
+        let cairooverlay = gst::ElementFactory::make("cairooverlay").build()?;
 
-            pipeline.add_many(&[
-                &queue_display,
-                &convert,
-                &cairooverlay,
-                &convert_out,
-                &video_sink,
-            ])?;
+        let convert_out = gst::ElementFactory::make("videoconvert").build()?;
+        let video_sink = gst::ElementFactory::make("autovideosink").build()?;
 
-            gst::Element::link_many(&[
-                &queue_display,
-                &convert,
-                &cairooverlay,
-                &convert_out,
-                &video_sink,
-            ])?;
+        pipeline.add_many(&[
+            &queue_display,
+            &convert,
+            &cairooverlay,
+            &convert_out,
+            &video_sink,
+        ])?;
 
-            let tee_display_pad = tee
-                .request_pad(&tee_src_pad_template, None, None)
-                .expect("Failed to request display pad from tee");
-            let queue_display_pad = queue_display
-                .static_pad("sink")
-                .expect("Failed to get queue_display sink pad");
-            tee_display_pad.link(&queue_display_pad)?;
+        gst::Element::link_many(&[
+            &queue_display,
+            &convert,
+            &cairooverlay,
+            &convert_out,
+            &video_sink,
+        ])?;
 
-            Some(cairooverlay)
-        };
+        let tee_display_pad = tee
+            .request_pad(&tee_src_pad_template, None, None)
+            .expect("Failed to request display pad from tee");
+        let queue_display_pad = queue_display
+            .static_pad("sink")
+            .expect("Failed to get queue_display sink pad");
+        tee_display_pad.link(&queue_display_pad)?;
 
         Ok(VideoPipeline {
+            detected_objects: Arc::new(Mutex::new(Vec::new())),
+            file_info: Arc::new(Mutex::new(file_info)),
             pipeline,
             app_sink,
-            overlay,
+            overlay: Some(cairooverlay),
             frame_processor: None,
         })
     }
 
     pub fn start(&mut self) -> Result<()> {
         // Draw
-        if self.overlay.is_some() {
-            // TODO: create draw method
+        if let Some(overlay) = &self.overlay {
+            let detected_objects = self.detected_objects.clone();
+
+            overlay.connect("draw", false, move |args| {
+                let cr = args[1]
+                    .get::<&cairo::Context>()
+                    .expect("Не удалось получить cairo context");
+
+                if let Ok(detected_objects) = detected_objects.lock() {
+                    for (bbox, _, confidence) in detected_objects.iter() {
+                        cr.set_source_rgb(1.0, 0.0, 0.0);
+                        cr.set_line_width(2.0);
+
+                        cr.rectangle(
+                            bbox.x1 as f64,
+                            bbox.y1 as f64,
+                            (bbox.x2 - bbox.x1) as f64,
+                            (bbox.y2 - bbox.y1) as f64,
+                        );
+                        cr.stroke().expect("Failed to stroke");
+                        let label = format!("{:.2}", confidence);
+                        cr.move_to(bbox.x1 as f64, bbox.y1 as f64 - 5.0);
+                        cr.show_text(&label).expect("Не удалось отрисовать текст");
+                    }
+                }
+
+                None
+            });
         }
 
-        if self.frame_processor.is_some() {
-            let processor = match &self.frame_processor {
-                Some(proc) => proc.clone(),
-                None => return Err(anyhow!("Frame processor not set")),
-            };
+        let processor = match &self.frame_processor {
+            Some(proc) => proc.clone(),
+            None => return Err(anyhow!("Frame processor not set")),
+        };
 
-            self.app_sink.set_callbacks(
-                gst_app::AppSinkCallbacks::builder()
-                    .new_sample(move |appsink| {
-                        let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
-                        let buffer = sample.buffer().ok_or_else(|| {
-                            element_error!(
-                                appsink,
-                                gst::ResourceError::Failed,
-                                ("Failed to get buffer from appsink")
-                            );
+        self.app_sink.set_callbacks(
+            AppSinkCallbacks::builder()
+                .new_sample(move |appsink| {
+                    let sample = match appsink.pull_sample() {
+                        Ok(sample) => sample,
+                        Err(_) => return Err(gst::FlowError::Eos),
+                    };
 
-                            gst::FlowError::Error
-                        })?;
+                    let buffer = match sample.buffer() {
+                        Some(buffer) => buffer,
+                        None => return Ok(gst::FlowSuccess::Ok),
+                    };
 
-                        let caps = match sample.caps() {
-                            Some(caps) => caps,
-                            None => return Ok(gst::FlowSuccess::Ok),
-                        };
+                    let caps = match sample.caps() {
+                        Some(caps) => caps,
+                        None => return Ok(gst::FlowSuccess::Ok),
+                    };
 
-                        let info = match gst_video::VideoInfo::from_caps(caps) {
-                            Ok(info) => info,
+                    let info = match gst_video::VideoInfo::from_caps(caps) {
+                        Ok(info) => info,
+                        Err(_) => return Ok(gst::FlowSuccess::Ok),
+                    };
+
+                    let frame =
+                        match gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info) {
+                            Ok(frame) => frame,
                             Err(_) => return Ok(gst::FlowSuccess::Ok),
                         };
 
-                        let frame =
-                            match gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info)
-                            {
-                                Ok(frame) => frame,
-                                Err(_) => return Ok(gst::FlowSuccess::Ok),
-                            };
+                    if let Err(err) = processor(&frame) {
+                        eprintln!("Error processing frame: {:?}", err);
+                    }
 
-                        // Вызываем пользовательский обработчик
-                        if let Err(err) = processor(&frame) {
-                            eprintln!("Error processing frame: {:?}", err);
-                        }
-
-                        Ok(gst::FlowSuccess::Ok)
-                    })
-                    .build(),
-            );
-        }
+                    Ok(gst::FlowSuccess::Ok)
+                })
+                .build(),
+        );
 
         self.pipeline.set_state(gst::State::Playing)?;
 
@@ -194,6 +222,14 @@ impl VideoPipeline {
         self.frame_processor = Some(Arc::new(processor));
     }
 
+    pub fn detected_objects(&self) -> Arc<Mutex<Vec<(BoundingBox, usize, f32)>>> {
+        Arc::clone(&self.detected_objects)
+    }
+
+    pub fn file_info(&self) -> Arc<Mutex<FileInfo>> {
+        Arc::clone(&self.file_info)
+    }
+
     fn create_source(path: &str) -> Result<gst::Element> {
         let bin = gst::Bin::new();
 
@@ -221,11 +257,39 @@ impl VideoPipeline {
         bin.add_pad(&bin_ghost_src_pad)?;
 
         let queue_weak = queue.downgrade();
-        decode_bin.connect_pad_added(move |_, src_pad| {
+        decode_bin.connect_pad_added(move |d_bin, src_pad| {
             if let Some(queue) = queue_weak.upgrade() {
+                let (_, is_video) = {
+                    let media_type = src_pad.current_caps().and_then(|caps| {
+                        caps.structure(0).map(|s| {
+                            let name = s.name();
+                            (name.starts_with("audio/"), name.starts_with("video/"))
+                        })
+                    });
+
+                    match media_type {
+                        None => {
+                            element_warning!(
+                                d_bin,
+                                gst::CoreError::Negotiation,
+                                ("Failed to get media type from pad {}", src_pad.name())
+                            );
+
+                            return;
+                        }
+                        Some(media_type) => media_type,
+                    }
+                };
+
+                if !is_video {
+                    println!("Ignoring non-video pad");
+                    return;
+                }
+
                 let sink_pad = queue
                     .static_pad("sink")
                     .expect("The queue element must have a sink-pad");
+
                 if let Err(err) = src_pad.link(&sink_pad) {
                     eprintln!(
                         "Failed to link decodebin src pad to queue sink pad: {:?}",
@@ -235,7 +299,7 @@ impl VideoPipeline {
                     println!("Successfully linked decodebin src pad to queue sink pad");
                 }
             } else {
-                eprintln!("Late linking: file_src_bin queue element has been dropped");
+                eprintln!("Late linking: source_bin queue element has been dropped");
             }
         });
 
