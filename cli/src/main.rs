@@ -9,7 +9,7 @@ fn main() -> Result<()> {
 
     // let model = Path::new(env!("CARGO_MANIFEST_DIR")).join("../models/yolo11s.onnx");
     let model = "D:/RustRoverProjects/rust-vision/models/yolo11s.onnx";
-    let video_source = "D:/RustRoverProjects/rust-vision/videos/person.mp4";
+    let video_source = "D:/RustRoverProjects/rust-vision/videos/troy.mp4";
 
     let model_input_width = 640;
     let model_input_height = 640;
