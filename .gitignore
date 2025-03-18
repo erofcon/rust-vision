@@ -1,5 +1,6 @@
 target/
 models/
+videos/
 video/
 .idea/
 *.mp4
