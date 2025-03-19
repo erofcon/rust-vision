@@ -18,6 +18,7 @@ Rust vision is a high-performance system for real-time video processing, object 
 - [ ] **People Tracking**: Add real-time tracking across video frames.
 - [ ] **Face Recognition**: Integrate facial recognition capabilities.
 
+
 ## 🔄 Pipeline Module
 - [x] **File-to-Screen Pipeline**: Build test pipeline for reading video files and displaying output.
 - [x] **RTMP/HLS Streaming Test**: Implement experimental video streaming via RTMP/HLS.
@@ -34,6 +35,8 @@ Rust vision is a high-performance system for real-time video processing, object 
 ---
 
 ### 🛠️ Infrastructure & Setup
+- [ ] **Add config file**
+- [ ] **Add Logging**
 - [ ] **Environment Setup**: Document prerequisites.
 - [ ] **Installation Guide**: Finalize requirements and installation steps.
 - [ ] **Docker Support**: Add containerization (optional).
@@ -43,3 +46,5 @@ Rust vision is a high-performance system for real-time video processing, object 
 ### Contribution Guidelines
 - [ ] **CONTRIBUTING.md**: Write guidelines for pull requests and issue tracking.
 - [ ] **License File**: Attach MIT License documentation.
+
+---

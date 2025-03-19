@@ -42,6 +42,7 @@ impl Inference {
         original_img_width: usize,
         original_img_height: usize,
     ) -> Result<Vec<(BoundingBox, usize, f32)>> {
+
         let image = Self::prepare_image(frame)?;
 
         let input = inputs!["images"=>image]?;
