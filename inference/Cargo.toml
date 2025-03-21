@@ -8,8 +8,8 @@ ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
 gst-video = { package = "gstreamer-video", version = "0.23.5" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
 anyhow = "1.0"
-image = "0.25.5"
 rayon = "1.10.0"
+parking_lot = "0.12.3"
 
 [features]
 load-dynamic = [ "ort/load-dynamic" ]

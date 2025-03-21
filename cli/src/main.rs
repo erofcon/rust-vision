@@ -23,14 +23,14 @@ fn main() -> Result<()> {
             url: String::from("D:/RustRoverProjects/rust-vision/videos/troy.mp4"),
             rtmp: String::from("rtmp://localhost/live/stream_1"),
         },
-        VideoSource {
-            url: String::from("D:/RustRoverProjects/rust-vision/videos/troy.mp4"),
-            rtmp: String::from("rtmp://localhost/live/stream_2"),
-        },
-        VideoSource {
-            url: String::from("D:/RustRoverProjects/rust-vision/videos/troy.mp4"),
-            rtmp: String::from("rtmp://localhost/live/stream_3"),
-        },
+        // VideoSource {
+        //     url: String::from("D:/RustRoverProjects/rust-vision/videos/troy.mp4"),
+        //     rtmp: String::from("rtmp://localhost/live/stream_2"),
+        // },
+        // VideoSource {
+        //     url: String::from("D:/RustRoverProjects/rust-vision/videos/troy.mp4"),
+        //     rtmp: String::from("rtmp://localhost/live/stream_3"),
+        // },
     ];
 
     let model_input_width = 640;
