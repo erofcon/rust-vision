@@ -9,14 +9,14 @@ pub struct Publisher {
 
 
 impl Publisher {
-    /// Создает новый экземпляр публикатора
+    /// Creates a new publisher instance
     ///
-    /// # Параметры
-    /// * `url` - URL подключения к RabbitMQ
-    /// * `queue_name` - Имя очереди для публикации
+    /// # Parameters
+    /// * `url` - URL connection to RabbitMQ
+    /// * `queue_name` - Name of the queue to publish
     ///
-    /// # Возвращает
-    /// * `Result<Self, Box<dyn std::error::Error>>` - Результат создания публикатора
+    /// # Returns
+    /// * `Result<Self, Box<dyn std::error::Error>>` - Result of creating the publisher
     pub async fn new(url: &str, queue_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let connection = Connection::connect(
             url,
@@ -42,13 +42,13 @@ impl Publisher {
         })
     }
 
-    /// Публикует сообщение в очередь
+    /// Publishes a message to the queue
     ///
-    /// # Параметры
-    /// * `payload` - Тело сообщения
+    /// # Parameters
+    /// * `payload` - Message body
     ///
-    /// # Возвращает
-    /// * `Result<(), Box<dyn std::error::Error>>` - Результат публикации
+    /// # Returns
+    /// * `Result<(), Box<dyn std::error::Error>>` - Publish result
     pub async fn publish(&self, payload: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         self.channel
             .basic_publish(

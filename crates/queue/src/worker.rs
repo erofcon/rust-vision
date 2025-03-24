@@ -6,35 +6,31 @@ use lapin::types::FieldTable;
 use lapin::{Channel, Connection, ConnectionProperties, Consumer, Queue};
 use std::sync::Arc;
 
-/// Обработчик задач, реализуемый пользователем библиотеки
+/// Task handler implemented by the library user
 #[async_trait]
 pub trait JobHandler: Send + Sync + 'static {
-    /// Метод для обработки полученных задач
+    /// Method for processing received tasks
     ///
-    /// # Параметры
-    /// * `payload` - Тело сообщения в виде байтового массива
+    /// # Parameters
+    /// * `payload` - Message body as a byte array
     ///
-    /// # Возвращает
-    /// * `Result<(), Box<dyn std::error::Error>>` - Результат обработки
+    /// # Returns
+    /// * `Result<(), Box<dyn std::error::Error>>` - Processing result
     async fn handle_job(
         &self,
         payload: &[u8],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
-/// Конфигурация для воркера
+/// Configuration for worker
 pub struct WorkerConfig {
-    /// URL подключения к RabbitMQ (например, "amqp://guest:guest@localhost:5672")
     pub url: String,
-    /// Имя очереди для прослушивания
     pub queue_name: String,
-    /// Количество сообщений, которое можно получить до отправки подтверждения
     pub prefetch_count: u16,
-    /// Тег для идентификации потребителя
     pub consumer_tag: String,
 }
 
-/// Основной класс воркера для обработки задач из RabbitMQ
+/// Basic worker class for processing tasks from RabbitMQ
 pub struct Worker<H: JobHandler> {
     config: WorkerConfig,
     connection: Connection,
@@ -45,19 +41,19 @@ pub struct Worker<H: JobHandler> {
 }
 
 impl<H: JobHandler> Worker<H> {
-    /// Создает новый экземпляр воркера
+    /// Creates a new worker instance
     ///
-    /// # Параметры
-    /// * `config` - Конфигурация для воркера
-    /// * `handler` - Обработчик задач
+    /// # Parameters
+    /// * `config` - Configuration for the worker
+    /// * `handler` - Task handler
     ///
-    /// # Возвращает
-    /// * `Result<Self, Box<dyn std::error::Error>>` - Результат создания воркера
+    /// # Returns
+    /// * `Result<Self, Box<dyn std::error::Error>>` - Result of worker creation
     pub async fn new(config: WorkerConfig, handler: H) -> Result<Self, Box<dyn std::error::Error>> {
         let connection = Connection::connect(&config.url, ConnectionProperties::default()).await?;
         let channel = connection.create_channel().await?;
 
-        // Устанавливаем prefetch для канала
+        // Setting up prefetch for the channel
         channel
             .basic_qos(
                 config.prefetch_count,
@@ -86,12 +82,12 @@ impl<H: JobHandler> Worker<H> {
         })
     }
 
-    /// Запускает воркер и начинает обработку сообщений
+    /// Starts the worker and begins processing messages
     ///
-    /// # Возвращает
-    /// * `Result<(), Box<dyn std::error::Error>>` - Результат запуска воркера
+    /// # Returns
+    /// * `Result<(), Box<dyn std::error::Error>>` - The result of starting the worker
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Запуск воркера для очереди: {}", self.config.queue_name);
+        println!("Starting a worker for a queue: {}", self.config.queue_name);
 
         let mut consumer = self
             .channel
@@ -118,17 +114,17 @@ impl<H: JobHandler> Worker<H> {
                     tokio::spawn(async move {
                         match handler_clone.handle_job(&payload).await {
                             Ok(_) => {
-                                // Успешная обработка - подтверждаем сообщение
+                                // Successful processing - confirm message
                                 if let Err(e) = channel_clone
                                     .basic_ack(delivery_tag, BasicAckOptions::default())
                                     .await
                                 {
-                                    eprintln!("Ошибка при подтверждении сообщения: {}", e);
+                                    eprintln!("Error confirming message: {}", e);
                                 }
                             }
                             Err(e) => {
                                 // Ошибка обработки - отклоняем сообщение с requeue=true
-                                eprintln!("Ошибка при обработке сообщения: {}", e);
+                                eprintln!("Error processing message: {}", e);
                                 if let Err(e) = channel_clone
                                     .basic_nack(
                                         delivery_tag,
@@ -139,14 +135,14 @@ impl<H: JobHandler> Worker<H> {
                                     )
                                     .await
                                 {
-                                    eprintln!("Ошибка при отклонении сообщения: {}", e);
+                                    eprintln!("Error rejecting message: {}", e);
                                 }
                             }
                         }
                     });
                 }
                 Err(e) => {
-                    eprintln!("Ошибка при получении сообщения: {}", e);
+                    eprintln!("Error receiving message: {}", e);
                 }
             }
         }
@@ -154,14 +150,14 @@ impl<H: JobHandler> Worker<H> {
         Ok(())
     }
 
-    /// Останавливает воркер
+    /// Stops the worker
     ///
-    /// # Возвращает
-    /// * `Result<(), Box<dyn std::error::Error>>` - Результат остановки воркера
+    /// # Returns
+    /// * `Result<(), Box<dyn std::error::Error>>` - The result of stopping the worker
     pub async fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Остановка воркера для очереди: {}", self.config.queue_name);
-        self.channel.close(0, "Нормальное завершение").await?;
-        self.connection.close(0, "Нормальное завершение").await?;
+        println!("Stopping a worker for a queue: {}", self.config.queue_name);
+        self.channel.close(0, "Normal completion").await?;
+        self.connection.close(0, "Normal completion").await?;
         Ok(())
     }
 }
