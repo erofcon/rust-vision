@@ -3,7 +3,8 @@ use crate::discover::FileInfo;
 use anyhow::{anyhow, Result};
 use gst::element_warning;
 use gst::prelude::{
-    Cast, ElementExt, ElementExtManual, GstBinExtManual, GstObjectExt, ObjectExt, PadExt,
+    Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, GstObjectExt,
+    ObjectExt, PadExt,
 };
 use gst_app::AppSinkCallbacks;
 use gst_video::VideoFrame;
@@ -24,22 +25,27 @@ pub struct VideoPipeline {
 }
 
 impl VideoPipeline {
-    pub fn new(path: &str, model_input_width: i32, model_input_height: i32) -> Result<Self> {
-        gst::init()?;
+    pub fn new(
+        path: &str,
+        model_input_width: i32,
+        model_input_height: i32,
+        rtmp_url: &str,
+    ) -> Result<Self> {
+        let pipeline = gst::Pipeline::new();
 
         let file_info = discover::discover(&path)?;
-
-        let pipeline = gst::Pipeline::new();
 
         // Initial elements for reading the stream
         let source = Self::create_source(path)?;
         let convert = gst::ElementFactory::make("videoconvert").build()?;
+        let cairooverlay = gst::ElementFactory::make("cairooverlay").build()?;
+        let convert_out = gst::ElementFactory::make("videoconvert").build()?;
         let tee = gst::ElementFactory::make("tee").build()?;
 
-        pipeline.add_many(&[&source, &convert, &tee])?;
+        pipeline.add_many(&[&source, &convert, &cairooverlay, &convert_out, &tee])?;
 
         // Linking elements before branching
-        gst::Element::link_many(&[&source, &convert, &tee])?;
+        gst::Element::link_many(&[&source, &convert, &cairooverlay, &convert_out, &tee])?;
 
         // Create branch for video processing
         let queue_process = gst::ElementFactory::make("queue").build()?;
@@ -70,32 +76,14 @@ impl VideoPipeline {
             .expect("Failed to get queue_process sink pad");
         tee_process_pad.link(&queue_process_pad)?;
 
+        // TODO: delete this branch in production
         // Create branch for video display
-
         let queue_display = gst::ElementFactory::make("queue").build()?;
-
         let convert = gst::ElementFactory::make("videoconvert").build()?;
-
-        let cairooverlay = gst::ElementFactory::make("cairooverlay").build()?;
-
-        let convert_out = gst::ElementFactory::make("videoconvert").build()?;
         let video_sink = gst::ElementFactory::make("autovideosink").build()?;
 
-        pipeline.add_many(&[
-            &queue_display,
-            &convert,
-            &cairooverlay,
-            &convert_out,
-            &video_sink,
-        ])?;
-
-        gst::Element::link_many(&[
-            &queue_display,
-            &convert,
-            &cairooverlay,
-            &convert_out,
-            &video_sink,
-        ])?;
+        pipeline.add_many(&[&queue_display, &convert, &video_sink])?;
+        gst::Element::link_many(&[&queue_display, &convert, &video_sink])?;
 
         let tee_display_pad = tee
             .request_pad(&tee_src_pad_template, None, None)
@@ -104,6 +92,52 @@ impl VideoPipeline {
             .static_pad("sink")
             .expect("Failed to get queue_display sink pad");
         tee_display_pad.link(&queue_display_pad)?;
+
+        // RTMP
+        let queue_rtmp = gst::ElementFactory::make("queue").build()?;
+        queue_rtmp.set_property("max-size-buffers", 1000u32);
+        let convert_rtmp = gst::ElementFactory::make("videoconvert").build()?;
+        let x264enc = gst::ElementFactory::make("x264enc").build()?;
+
+        x264enc.set_property_from_str("tune", "zerolatency");
+        x264enc.set_property_from_str("speed-preset", "veryfast");
+        x264enc.set_property("bitrate", 2000u32);
+
+        let h264parse = gst::ElementFactory::make("h264parse").build()?;
+        let flvmux = gst::ElementFactory::make("flvmux").build()?;
+        flvmux.set_property("streamable", true);
+        let rtmpsink = gst::ElementFactory::make("rtmpsink").build()?;
+        rtmpsink.set_property("location", rtmp_url);
+
+        pipeline.add_many(&[
+            &queue_rtmp,
+            &convert_rtmp,
+            &x264enc,
+            &h264parse,
+            &flvmux,
+            &rtmpsink,
+        ])?;
+
+        gst::Element::link_many(&[
+            &queue_rtmp,
+            &convert_rtmp,
+            &x264enc,
+            &h264parse,
+            &flvmux,
+            &rtmpsink,
+        ])?;
+
+        let tee_rtmp_pad_template = tee
+            .pad_template("src_%u")
+            .expect("Failed to get pad template");
+        let tee_rtmp_pad = tee
+            .request_pad(&tee_rtmp_pad_template, None, None)
+            .expect("Failed to request RTMP pad from tee");
+        let queue_rtmp_pad = queue_rtmp
+            .static_pad("sink")
+            .expect("Failed to get queue_rtmp sink pad");
+
+        tee_rtmp_pad.link(&queue_rtmp_pad)?;
 
         Ok(VideoPipeline {
             detected_objects: Arc::new(Mutex::new(Vec::new())),
@@ -121,9 +155,7 @@ impl VideoPipeline {
             let detected_objects = self.detected_objects.clone();
 
             overlay.connect("draw", false, move |args| {
-                let cr = args[1]
-                    .get::<&cairo::Context>()
-                    .expect("Не удалось получить cairo context");
+                let cr = args[1].get::<&cairo::Context>().unwrap();
 
                 if let Ok(detected_objects) = detected_objects.lock() {
                     for (bbox, _, confidence) in detected_objects.iter() {
@@ -142,7 +174,6 @@ impl VideoPipeline {
                         cr.show_text(&label).expect("Не удалось отрисовать текст");
                     }
                 }
-
                 None
             });
         }
@@ -182,7 +213,7 @@ impl VideoPipeline {
                         };
 
                     if let Err(err) = processor(&frame) {
-                        eprintln!("Error processing frame: {:?}", err);
+                        println!("Error processing frame: {:?}", err);
                     }
 
                     Ok(gst::FlowSuccess::Ok)
@@ -200,12 +231,12 @@ impl VideoPipeline {
                     break;
                 }
                 gst::MessageView::Error(err) => {
-                    eprintln!(
-                        "Error from {:?}: {} ({:?})",
-                        err.src().map(|s| s.path_string()),
-                        err.error(),
-                        err.debug()
-                    );
+                    let src_name = err
+                        .src()
+                        .map(|s| s.name())
+                        .unwrap_or_else(|| "неизвестный элемент".into());
+
+                    println!("Error from {:?}: {}", src_name, err);
                     break;
                 }
                 _ => (),

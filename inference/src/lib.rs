@@ -7,12 +7,13 @@ use ndarray::{s, Array, Axis, IxDyn};
 use ort::execution_providers::CUDAExecutionProvider;
 use ort::inputs;
 use ort::session::Session;
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::sync::Arc;
 use utils::BoundingBox;
 
 pub struct Inference {
-    session: Arc<Session>,
+    session: Arc<Mutex<Session>>,
 }
 
 impl Inference {
@@ -22,14 +23,14 @@ impl Inference {
             .commit()
             .unwrap();
 
-        let session = Arc::new(
+        let session = Arc::new(Mutex::new(
             Session::builder()
                 .unwrap()
                 .with_inter_threads(4)
                 .unwrap()
                 .commit_from_file(model_path)
                 .unwrap(),
-        );
+        ));
 
         println!("Initializing model from: {}", model_path);
 
@@ -46,15 +47,19 @@ impl Inference {
 
         let input = inputs!["images"=>image]?;
 
-        let outputs = self.session.run(input)?;
+        let output = {
+            let binding = self.session.clone();
 
-        let output = outputs["output0"]
-            .try_extract_tensor::<f32>()?
-            .t()
-            .into_owned();
+            let session = binding.lock();
+            let outputs = session.run(input)?;
+
+            outputs["output0"]
+                .try_extract_tensor::<f32>()?
+                .t()
+                .into_owned()
+        };
 
         let result = Self::process_output(output, original_img_width, original_img_height);
-
         result
     }
 

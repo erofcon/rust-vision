@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 gst-streaming = { path = "../gst-streaming" }
+gst = { package = "gstreamer", version = "0.23.5" }
 inference = { path = "../inference" }
 anyhow = "1.0"

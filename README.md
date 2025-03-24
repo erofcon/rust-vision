@@ -1,60 +1,50 @@
-# Rust vision
-
-##### A Rust-based computer vision pipeline for processing RTSP streams and video files using GStreamer, ONNX Runtime, and Actix-web. 
+## Rust vision
 
 ### The project is under development ...
 
 ## Overview
 
-Rust vision is a high-performance system for real-time video processing, object detection, and tracking. The project provides a modular pipeline architecture that:
-
-1. Ingests video from RTSP streams or video files via GStreamer
-2. Performs object detection using ONNX Runtime
-3. Tracks detected objects across frames
-4. Streams processed video back through an RTSP server
-5. Offers a RESTful API for configuration and stream management
-
-## Features
-
-- **Video Processing**: Ingest and process RTSP streams or video files
-- **Object Detection**: Utilize ONNX Runtime for efficient deep learning inference
-- **Object Tracking**: Track detected objects across video frames
-- **Stream Output**: Serve processed video through RTSP server
-- **API Server**: Configure and manage streams through a RESTful API
-- **Database Integration**: Store configuration and stream data persistently
-
-## Architecture
-
-```
-┌──────────────┐    ┌──────────────┐    ┌────────────────┐    ┌────────────────┐
-│              │    │              │    │                │    │                │
-│  RTSP Stream │───►│  GStreamer   │───►│Object Detection│───►│ Object Tracking│
-│  Video Files │    │  Pipeline    │    │ (ONNX Runtime) │    │                │
-│              │    │              │    │                │    │                │
-└──────────────┘    └──────────────┘    └────────────────┘    └────────────────┘
-                                                                      │
-                                                                      ▼
-                    ┌──────────────┐                         ┌────────────────┐
-                    │              │                         │                │
-                    │   Actix-web  │◄────────────────────────┤  RTSP Server   │
-                    │   API Server │                         │                │
-                    │              │                         │                │
-                    └──────────────┘                         └────────────────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │              │
-                    │   Database   │
-                    │              │
-                    │              │
-                    └──────────────┘
-```
+Rust vision is a high-performance system for real-time video processing, object detection, and tracking.
 
 
-## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## Task List
 
-## Contributing
+---
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 🎯 Detection Module
+- [x] **Basic Detection**: Implement ORT-based human detection.
+- [ ] **Detection Optimization**: Improve efficiency of people detection algorithms.
+- [ ] **People Tracking**: Add real-time tracking across video frames.
+- [ ] **Face Recognition**: Integrate facial recognition capabilities.
+
+
+## 🔄 Pipeline Module
+- [x] **File-to-Screen Pipeline**: Build test pipeline for reading video files and displaying output.
+- [x] **RTMP/HLS Streaming Test**: Implement experimental video streaming via RTMP/HLS.
+- [ ] **Error-Handling Pipeline**: Develop robust pipeline with error management and RTMP server output.
+- [ ] **Multi-Thread Execution**: Enable manual launch of multiple pipeline instances.
+- [ ] **RTSP Camera Integration**: Add support for live streams from RTSP cameras.
+- [ ] **Stream Authorization**: Implement authentication for RMP streams.
+
+## 🌐 API Module
+- [ ] **Stream List API**: Create basic API to retrieve active video streams.
+- [ ] **Pipeline Launch API**: Build API endpoint to start pipelines from uploaded files.
+- [ ] **API Authorization**: Add security layer with access controls.
+
+---
+
+### 🛠️ Infrastructure & Setup
+- [ ] **Add config file**
+- [ ] **Add Logging**
+- [ ] **Environment Setup**: Document prerequisites.
+- [ ] **Installation Guide**: Finalize requirements and installation steps.
+- [ ] **Docker Support**: Add containerization (optional).
+
+---
+
+### Contribution Guidelines
+- [ ] **CONTRIBUTING.md**: Write guidelines for pull requests and issue tracking.
+- [ ] **License File**: Attach MIT License documentation.
+
+---

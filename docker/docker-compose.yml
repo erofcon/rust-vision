@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+  rtmp_server:
+    build: .
+    ports:
+      - "1935:1935"
+
+  rabbitmq:
+    image: rabbitmq:3.6-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+volumes:
+  rabbitmq_data:
