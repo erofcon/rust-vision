@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::utils::WorkerConfig;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions};
@@ -16,18 +16,10 @@ pub trait JobHandler: Send + Sync + 'static {
     ///
     /// # Returns
     /// * `Result<(), Box<dyn std::error::Error>>` - Processing result
-    async fn handle_job(
+    async fn handle_run_pipeline(
         &self,
         payload: &[u8],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
-}
-
-/// Configuration for worker
-pub struct WorkerConfig {
-    pub url: String,
-    pub queue_name: String,
-    pub prefetch_count: u16,
-    pub consumer_tag: String,
 }
 
 /// Basic worker class for processing tasks from RabbitMQ
@@ -106,13 +98,12 @@ impl<H: JobHandler> Worker<H> {
             match delivery {
                 Ok(delivery) => {
                     let delivery_tag = delivery.delivery_tag;
-
                     let payload = delivery.data.to_vec();
                     let channel_clone = channel.clone();
                     let handler_clone = handler.clone();
 
                     tokio::spawn(async move {
-                        match handler_clone.handle_job(&payload).await {
+                        match handler_clone.handle_run_pipeline(&*payload).await {
                             Ok(_) => {
                                 // Successful processing - confirm message
                                 if let Err(e) = channel_clone
@@ -123,7 +114,7 @@ impl<H: JobHandler> Worker<H> {
                                 }
                             }
                             Err(e) => {
-                                // Ошибка обработки - отклоняем сообщение с requeue=true
+                                // Error processing
                                 eprintln!("Error processing message: {}", e);
                                 if let Err(e) = channel_clone
                                     .basic_nack(
@@ -146,7 +137,6 @@ impl<H: JobHandler> Worker<H> {
                 }
             }
         }
-
         Ok(())
     }
 

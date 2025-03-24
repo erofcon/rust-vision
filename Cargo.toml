@@ -1,4 +1,4 @@
 ["workspace"]
-members = [ "cli","gst-streaming", "inference", "queue", "server", "worker"]
+members = [ "apps/api-server", "apps/worker", "cli","gst-streaming", "inference", "crates/queue", "server"]
 resolver = "2"
 
