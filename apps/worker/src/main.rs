@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use queue::utils::WorkerConfig;
+use queue::utils::{TaskType, WorkerConfig};
 use queue::worker::{JobHandler, Worker};
 use std::error::Error;
 use std::time::Duration;
@@ -9,17 +9,37 @@ struct TaskHandler;
 
 #[async_trait]
 impl JobHandler for TaskHandler {
-    async fn handle_run_pipeline(
+    async fn handle_task(
         &self,
+        job_type: TaskType,
         payload: &[u8],
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let message = String::from_utf8_lossy(payload);
-        println!("Task handler: {}", message);
+        match job_type {
+            TaskType::RunPipeline => {
+                println!("Task handler: run_pipeline");
 
-        sleep(Duration::from_secs(1)).await;
+                let message = String::from_utf8_lossy(payload);
+                println!("Task handler: {}", message);
 
-        println!("Task '{}' completed", message);
-        Ok(())
+                sleep(Duration::from_secs(5)).await;
+
+                println!("Task '{}' completed", message);
+
+                Ok(())
+            }
+            TaskType::GenerateReport => {
+                println!("Task handler: generate_report");
+
+                let message = String::from_utf8_lossy(payload);
+                println!("Task handler: {}", message);
+
+                sleep(Duration::from_secs(1)).await;
+
+                println!("Task '{}' completed", message);
+
+                Ok(())
+            }
+        }
     }
 }
 
@@ -36,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let handler = TaskHandler;
 
-    let mut worker = Worker::new(config,  handler).await?;
+    let mut worker = Worker::new(config, handler).await?;
 
     println!("Воркер запущен и ожидает задачи...");
 

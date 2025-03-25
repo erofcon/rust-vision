@@ -1,5 +1,9 @@
-/// Queues being processed.
-/// All queues that are not included in this enumeration will be discarded
+/// Task being processed.
+/// All Task that are not included in this enumeration will be discarded
+pub enum TaskType {
+    RunPipeline,
+    GenerateReport,
+}
 
 /// Configuration for worker
 pub struct WorkerConfig {

@@ -2324,6 +2324,7 @@ dependencies = [
  "async-trait",
  "futures-util",
  "lapin",
+ "serde_json",
  "thiserror",
  "tokio",
 ]

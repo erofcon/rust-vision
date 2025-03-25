@@ -1,9 +1,10 @@
-use crate::utils::WorkerConfig;
+use crate::utils::{TaskType, WorkerConfig};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions};
 use lapin::types::FieldTable;
 use lapin::{Channel, Connection, ConnectionProperties, Consumer, Queue};
+use serde_json::Value;
 use std::sync::Arc;
 
 /// Task handler implemented by the library user
@@ -16,8 +17,10 @@ pub trait JobHandler: Send + Sync + 'static {
     ///
     /// # Returns
     /// * `Result<(), Box<dyn std::error::Error>>` - Processing result
-    async fn handle_run_pipeline(
+
+    async fn handle_task(
         &self,
+        job_type: TaskType,
         payload: &[u8],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
@@ -102,10 +105,23 @@ impl<H: JobHandler> Worker<H> {
                     let channel_clone = channel.clone();
                     let handler_clone = handler.clone();
 
+                    let job_type = match Self::parse_job_type(&payload) {
+                        Ok(job_type) => job_type,
+                        Err(e) => {
+                            eprintln!("Invalid job type: {}", e);
+                            if let Err(e) = channel_clone
+                                .basic_nack(delivery_tag, BasicNackOptions::default())
+                                .await
+                            {
+                                eprintln!("Error rejecting message: {}", e);
+                            }
+                            continue;
+                        }
+                    };
+
                     tokio::spawn(async move {
-                        match handler_clone.handle_run_pipeline(&*payload).await {
+                        match handler_clone.handle_task(job_type, &payload).await {
                             Ok(_) => {
-                                // Successful processing - confirm message
                                 if let Err(e) = channel_clone
                                     .basic_ack(delivery_tag, BasicAckOptions::default())
                                     .await
@@ -114,16 +130,9 @@ impl<H: JobHandler> Worker<H> {
                                 }
                             }
                             Err(e) => {
-                                // Error processing
                                 eprintln!("Error processing message: {}", e);
                                 if let Err(e) = channel_clone
-                                    .basic_nack(
-                                        delivery_tag,
-                                        BasicNackOptions {
-                                            requeue: true,
-                                            ..BasicNackOptions::default()
-                                        },
-                                    )
+                                    .basic_nack(delivery_tag, BasicNackOptions::default())
                                     .await
                                 {
                                     eprintln!("Error rejecting message: {}", e);
@@ -149,5 +158,15 @@ impl<H: JobHandler> Worker<H> {
         self.channel.close(0, "Normal completion").await?;
         self.connection.close(0, "Normal completion").await?;
         Ok(())
+    }
+
+    pub fn parse_job_type(payload: &[u8]) -> Result<TaskType, Box<dyn std::error::Error>> {
+        let data: Value = serde_json::from_slice(payload)?;
+
+        match data["task_type"].as_str() {
+            Some("run_pipeline") => Ok(TaskType::RunPipeline),
+            Some("generate_report") => Ok(TaskType::GenerateReport),
+            _ => Err("Unknown job type".into()),
+        }
     }
 }
