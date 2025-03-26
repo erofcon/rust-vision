@@ -1,3 +1,3 @@
 pub mod worker;
-pub mod publisher;
+pub mod publish;
 pub mod utils;

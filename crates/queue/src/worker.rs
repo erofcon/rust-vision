@@ -1,64 +1,57 @@
-use crate::utils::{TaskType, WorkerConfig};
+use crate::utils::QueueType;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions};
 use lapin::types::FieldTable;
-use lapin::{Channel, Connection, ConnectionProperties, Consumer, Queue};
-use serde_json::Value;
+use lapin::{Channel, Connection, ConnectionProperties};
 use std::sync::Arc;
 
-/// Task handler implemented by the library user
+/// Queue handler implemented by the library user
 #[async_trait]
-pub trait JobHandler: Send + Sync + 'static {
+pub trait QueueHandler: Send + Sync + 'static {
     /// Method for processing received tasks
     ///
     /// # Parameters
-    /// * `payload` - Message body as a byte array
+    /// * `queue_type` - Queue type
     ///
     /// # Returns
     /// * `Result<(), Box<dyn std::error::Error>>` - Processing result
-
-    async fn handle_task(
+    async fn queue_handler(
         &self,
-        job_type: TaskType,
-        payload: &[u8],
+        queue_type: &QueueType,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 /// Basic worker class for processing tasks from RabbitMQ
-pub struct Worker<H: JobHandler> {
-    config: WorkerConfig,
+pub struct Worker<H: QueueHandler> {
     connection: Connection,
     channel: Channel,
-    queue: Queue,
+    queue_type: QueueType,
     handler: Arc<H>,
-    consumer: Option<Consumer>,
 }
 
-impl<H: JobHandler> Worker<H> {
+impl<H: QueueHandler> Worker<H> {
     /// Creates a new worker instance
     ///
     /// # Parameters
-    /// * `config` - Configuration for the worker
+    /// * `url`
+    /// * `queue_type`
     /// * `handler` - Task handler
     ///
     /// # Returns
     /// * `Result<Self, Box<dyn std::error::Error>>` - Result of worker creation
-    pub async fn new(config: WorkerConfig, handler: H) -> Result<Self, Box<dyn std::error::Error>> {
-        let connection = Connection::connect(&config.url, ConnectionProperties::default()).await?;
+
+    pub async fn new(
+        url: &str,
+        queue_type: QueueType,
+        handler: H,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let connection = Connection::connect(&url, ConnectionProperties::default()).await?;
         let channel = connection.create_channel().await?;
 
-        // Setting up prefetch for the channel
         channel
-            .basic_qos(
-                config.prefetch_count,
-                lapin::options::BasicQosOptions::default(),
-            )
-            .await?;
-
-        let queue = channel
             .queue_declare(
-                &config.queue_name,
+                &queue_type.to_str(),
                 QueueDeclareOptions {
                     durable: true,
                     ..QueueDeclareOptions::default()
@@ -66,14 +59,11 @@ impl<H: JobHandler> Worker<H> {
                 FieldTable::default(),
             )
             .await?;
-
         Ok(Self {
-            config,
             connection,
             channel,
-            queue,
+            queue_type,
             handler: Arc::new(handler),
-            consumer: None,
         })
     }
 
@@ -82,45 +72,35 @@ impl<H: JobHandler> Worker<H> {
     /// # Returns
     /// * `Result<(), Box<dyn std::error::Error>>` - The result of starting the worker
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Starting a worker for a queue: {}", self.config.queue_name);
-
         let mut consumer = self
             .channel
             .basic_consume(
-                &self.config.queue_name,
-                &self.config.consumer_tag,
+                &self.queue_type.to_str(),
+                "consumer",
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
             .await?;
 
-        let channel = self.channel.clone();
         let handler = self.handler.clone();
+        let channel = self.channel.clone();
+        let queue_type = self.queue_type.clone();
+
+        println!(
+            "Starting a worker for a queue: {} \n [*] Waiting for messages. To exit press CTRL+C",
+            queue_type.to_str()
+        );
 
         while let Some(delivery) = consumer.next().await {
             match delivery {
                 Ok(delivery) => {
                     let delivery_tag = delivery.delivery_tag;
-                    let payload = delivery.data.to_vec();
-                    let channel_clone = channel.clone();
                     let handler_clone = handler.clone();
-
-                    let job_type = match Self::parse_job_type(&payload) {
-                        Ok(job_type) => job_type,
-                        Err(e) => {
-                            eprintln!("Invalid job type: {}", e);
-                            if let Err(e) = channel_clone
-                                .basic_nack(delivery_tag, BasicNackOptions::default())
-                                .await
-                            {
-                                eprintln!("Error rejecting message: {}", e);
-                            }
-                            continue;
-                        }
-                    };
+                    let channel_clone = channel.clone();
+                    let queue_type_clone = queue_type.clone();
 
                     tokio::spawn(async move {
-                        match handler_clone.handle_task(job_type, &payload).await {
+                        match handler_clone.queue_handler(&queue_type_clone).await {
                             Ok(_) => {
                                 if let Err(e) = channel_clone
                                     .basic_ack(delivery_tag, BasicAckOptions::default())
@@ -146,6 +126,7 @@ impl<H: JobHandler> Worker<H> {
                 }
             }
         }
+
         Ok(())
     }
 
@@ -154,19 +135,12 @@ impl<H: JobHandler> Worker<H> {
     /// # Returns
     /// * `Result<(), Box<dyn std::error::Error>>` - The result of stopping the worker
     pub async fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Stopping a worker for a queue: {}", self.config.queue_name);
+        println!(
+            "Stopping a worker for a queue: {}",
+            self.queue_type.to_str()
+        );
         self.channel.close(0, "Normal completion").await?;
         self.connection.close(0, "Normal completion").await?;
         Ok(())
-    }
-
-    pub fn parse_job_type(payload: &[u8]) -> Result<TaskType, Box<dyn std::error::Error>> {
-        let data: Value = serde_json::from_slice(payload)?;
-
-        match data["task_type"].as_str() {
-            Some("run_pipeline") => Ok(TaskType::RunPipeline),
-            Some("generate_report") => Ok(TaskType::GenerateReport),
-            _ => Err("Unknown job type".into()),
-        }
     }
 }

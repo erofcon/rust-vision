@@ -1,14 +1,16 @@
-/// Task being processed.
-/// All Task that are not included in this enumeration will be discarded
-pub enum TaskType {
+/// QueueType being processed.
+/// All QueueType that are not included in this enumeration will be discarded
+#[derive(Debug, Clone, Copy)]
+pub enum QueueType {
     RunPipeline,
     GenerateReport,
 }
 
-/// Configuration for worker
-pub struct WorkerConfig {
-    pub url: String,
-    pub queue_name: String,
-    pub prefetch_count: u16,
-    pub consumer_tag: String,
+impl QueueType {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            QueueType::RunPipeline => "run_pipeline",
+            QueueType::GenerateReport => "generate_report",
+        }
+    }
 }
