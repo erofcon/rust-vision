@@ -23,7 +23,7 @@ The system will provide basic scalability: processing of several tasks will be c
 - [X] **Combine pipeline and human detection**
 - [X] **Create an image output on an RTMP server**
   > It is necessary to remove the output branch on the screen
-- [ ] **Create tasks on Rabitmq to run a video processing task**
+- [ ] **Create tasks on Rabbitmq to run a video processing task**
 - [ ] **Create an Actix Web API for processing tasks**
 - [ ] **Add a system load monitoring system**
 - [ ] **Add people tracking**
