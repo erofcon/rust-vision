@@ -1,4 +1,5 @@
-use queue::publisher::Publisher;
+use queue::publish::Publisher;
+use queue::utils::QueueType;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -6,9 +7,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Публикация сообщения: {}", message);
 
-    let publisher = Publisher::new("amqp://guest:guest@localhost:5672", "tasks").await?;
+    let publisher = Publisher::new("amqp://guest:guest@localhost:5672").await?;
 
-    publisher.publish(message.as_bytes()).await?;
+    publisher
+        .publish(message.as_bytes(), QueueType::GenerateReport)
+        .await?;
 
     println!("Сообщение успешно опубликовано!");
 
