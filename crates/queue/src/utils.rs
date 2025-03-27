@@ -14,3 +14,35 @@ impl QueueType {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum TaskStatus {
+    NotStarted,
+    Waiting,
+    Processing,
+    Completed,
+    Error,
+}
+
+impl TaskStatus {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            TaskStatus::NotStarted => "not_started",
+            TaskStatus::Waiting => "waiting",
+            TaskStatus::Processing => "processing",
+            TaskStatus::Completed => "completed",
+            TaskStatus::Error => "error",
+        }
+    }
+
+    pub fn from_str(status: &str) -> Option<TaskStatus> {
+        match status {
+            "not_started" => Some(TaskStatus::NotStarted),
+            "waiting" => Some(TaskStatus::Waiting),
+            "processing" => Some(TaskStatus::Processing),
+            "completed" => Some(TaskStatus::Completed),
+            "error" => Some(TaskStatus::Error),
+            _ => None,
+        }
+    }
+}

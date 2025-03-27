@@ -1,4 +1,6 @@
 ["workspace"]
-members = [ "apps/api-server", "apps/worker", "cli","gst-streaming", "inference", "crates/queue", "server"]
+members = ["crates/*", "apps/*"]
+migrate-path = "migrations"
+
 resolver = "2"
 
