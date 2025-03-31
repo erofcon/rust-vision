@@ -32,13 +32,34 @@ impl VideoRepository {
         Ok(result)
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<Video> {
+    pub async fn get_by_id(&self, id: Uuid) -> Result<Option<Video>> {
         let result = sqlx::query_as(r#"SELECT * FROM videos WHERE id = $1"#)
             .bind(id)
-            .fetch_one(&self.pool)
+            .fetch_optional(&self.pool)
             .await
             .context("Error receiving video")?;
 
         Ok(result)
+    }
+
+    pub async fn get_video_list(&self) -> Result<Vec<Video>> {
+        // TODO: add filter
+
+        let result = sqlx::query_as(r#"SELECT * FROM videos"#)
+            .fetch_all(&self.pool)
+            .await
+            .context("Error fetching videos")?;
+
+        Ok(result)
+    }
+
+    pub async fn delete_video(&self, id: Uuid) -> Result<bool> {
+        sqlx::query("DELETE FROM videos WHERE id = $1")
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await
+            .context("Failed to delete video")?;
+
+        Ok(true)
     }
 }
