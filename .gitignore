@@ -2,5 +2,6 @@ target/
 videos/
 video/
 .idea/
+uploads/
 *.mp4
 *.onnx
