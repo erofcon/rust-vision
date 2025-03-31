@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Type;
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize, Type)]
+#[derive(Debug, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "video_status")]
 #[sqlx(rename_all = "lowercase")]
 pub enum VideoStatus {
