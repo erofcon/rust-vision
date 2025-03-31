@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let mut worker = Worker::new(
         "amqp://guest:guest@localhost:5672".into(),
-        QueueType::GenerateReport,
+        QueueType::RunPipeline,
         handler,
     )
     .await?;

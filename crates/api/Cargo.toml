@@ -1,0 +1,21 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+uuid = { version = "1.16.0", features = ["v4"] }
+actix-web = "4.10.2"
+actix-cors = "0.7.1"
+actix-multipart = "0.7.2"
+anyhow = "1.0.97"
+thiserror = "2.0.12"
+serde = { version = "1.0.219", features = ["derive"] }
+sqlx = "0.8.3"
+futures = "0.3.31"
+chrono = { version = "0.4.40", features = ["serde"] }
+sanitize-filename = "0.6.0"
+lapin = "2.5.1"
+storage = { path = "../storage" }
+queue = { path = "../queue" }
+bincode = "1.3.3"
