@@ -3,7 +3,8 @@ use actix_web::{middleware::Logger, web, App, HttpServer};
 use anyhow::Result;
 
 use api::config::Config;
-use api::handlers::{health, video};
+use api::handlers::{health, publish, video};
+use queue::connection::MQ;
 use storage::config::DatabaseConfig;
 use storage::database::Database;
 
@@ -21,7 +22,13 @@ async fn main() -> Result<()> {
 
     let db = Database::new(&db_config.connection_string()).await?;
 
+    db.ping().await?;
+
     let db_pool = db.get_pool().clone();
+
+    let mq = MQ::new("amqp://guest:guest@localhost:5672").await?;
+
+    let mq_clone = mq.get_channel().clone();
 
     println!("Server running on {}:{}", config.host, config.port);
 
@@ -37,14 +44,14 @@ async fn main() -> Result<()> {
             .wrap(Logger::default())
             .wrap(cors)
             .app_data(web::Data::new(db_pool.clone()))
+            .app_data(web::Data::new(mq_clone.clone()))
             .configure(health::config)
             .configure(video::config)
+            .configure(publish::config)
     })
     .bind(format!("{}:{}", config.host, config.port))?
     .run()
     .await?;
-
-
 
     Ok(())
 }

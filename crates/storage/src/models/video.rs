@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[sqlx(rename_all = "lowercase")]
 pub enum VideoStatus {
     Uploaded,
+    Waiting,
     Processing,
     Completed,
     Failed,

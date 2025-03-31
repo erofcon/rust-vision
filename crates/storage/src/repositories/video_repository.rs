@@ -1,4 +1,4 @@
-use crate::models::video::Video;
+use crate::models::video::{Video, VideoStatus};
 use anyhow::{Context, Result};
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
@@ -61,5 +61,20 @@ impl VideoRepository {
             .context("Failed to delete video")?;
 
         Ok(true)
+    }
+
+    pub async fn change_status(&self, id: Uuid, status: &VideoStatus) -> Result<Video> {
+        let result = sqlx::query_as(
+            r#"
+           UPDATE videos SET status = $1 WHERE id = $2 RETURNING *
+            "#,
+        )
+        .bind(&status)
+        .bind(&id)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to create video")?;
+
+        Ok(result)
     }
 }

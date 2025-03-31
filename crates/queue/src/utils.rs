@@ -1,3 +1,6 @@
+use uuid::Uuid;
+use serde::{Deserialize, Serialize};
+
 /// QueueType being processed.
 /// All QueueType that are not included in this enumeration will be discarded
 #[derive(Debug, Clone, Copy)]
@@ -17,32 +20,37 @@ impl QueueType {
 
 #[derive(Debug, Clone, Copy)]
 pub enum TaskStatus {
-    NotStarted,
+    Uploaded,
     Waiting,
     Processing,
     Completed,
-    Error,
+    Failed,
 }
 
 impl TaskStatus {
     pub fn to_str(&self) -> &'static str {
         match self {
-            TaskStatus::NotStarted => "not_started",
+            TaskStatus::Uploaded => "uploaded",
             TaskStatus::Waiting => "waiting",
             TaskStatus::Processing => "processing",
             TaskStatus::Completed => "completed",
-            TaskStatus::Error => "error",
+            TaskStatus::Failed => "failed",
         }
     }
 
     pub fn from_str(status: &str) -> Option<TaskStatus> {
         match status {
-            "not_started" => Some(TaskStatus::NotStarted),
+            "uploaded" => Some(TaskStatus::Uploaded),
             "waiting" => Some(TaskStatus::Waiting),
             "processing" => Some(TaskStatus::Processing),
             "completed" => Some(TaskStatus::Completed),
-            "error" => Some(TaskStatus::Error),
+            "failed" => Some(TaskStatus::Failed),
             _ => None,
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Payload {
+    pub id: Uuid,
 }

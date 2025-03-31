@@ -2,22 +2,19 @@ use crate::utils::QueueType;
 use anyhow::{Context, Result};
 use lapin::options::QueueDeclareOptions;
 use lapin::types::FieldTable;
-use lapin::{Channel, Connection, ConnectionProperties};
+use lapin::Channel;
 
-pub struct Publisher {
+pub struct Producer {
     channel: Channel,
 }
 
-impl Publisher {
-    pub async fn new(url: &str) -> Result<Self> {
-        let connection = Connection::connect(url, ConnectionProperties::default()).await?;
-
-        let channel = connection.create_channel().await?;
-
+impl Producer {
+    pub fn new(channel: Channel) -> Result<Self> {
         Ok(Self { channel })
     }
 
     pub async fn publish(&self, payload: &[u8], queue_type: QueueType) -> Result<()> {
+
         self.channel
             .queue_declare(
                 queue_type.to_str(),
@@ -27,7 +24,8 @@ impl Publisher {
                 },
                 FieldTable::default(),
             )
-            .await?;
+            .await
+            .context("Error declaring queue")?;
 
         self.channel
             .basic_publish(
@@ -38,15 +36,8 @@ impl Publisher {
                 lapin::BasicProperties::default().with_delivery_mode(2),
             )
             .await
-            .context("Error creating queue")?;
+            .context("Error when publishing queue")?;
 
-        Ok(())
-    }
-
-    // TODO: add ping
-
-    pub async fn close(&self) -> Result<()> {
-        self.channel.close(200, "Bye").await?;
         Ok(())
     }
 }

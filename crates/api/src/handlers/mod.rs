@@ -1,3 +1,3 @@
 pub mod health;
 pub mod video;
-mod helper;
+pub mod publish;

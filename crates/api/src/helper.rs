@@ -1,9 +1,8 @@
 use crate::error::ApiError;
 use actix_multipart::Field;
+use anyhow::Result;
 use futures::StreamExt;
 use std::io::Write;
-
-use anyhow::Result;
 
 pub async fn read_field_data(mut field: Field) -> Result<Vec<u8>, ApiError> {
     let mut data = Vec::new();

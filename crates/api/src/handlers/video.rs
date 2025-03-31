@@ -1,5 +1,6 @@
 use actix_multipart::Multipart;
 use actix_web::{delete, get, post, web, HttpResponse, Responder};
+use anyhow::Result;
 use chrono::Utc;
 use futures::TryStreamExt;
 use sqlx::{Pool, Postgres};
@@ -8,7 +9,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 use crate::error::ApiError;
-use crate::handlers::helper::{delete_file, read_field_data, save_file};
+use crate::helper::{delete_file, read_field_data, save_file};
 use crate::models::requests::{VideoListResponse, VideoResponse, VideoUploadResponse};
 use storage::models::video::{Video, VideoStatus};
 use storage::repositories::video_repository::VideoRepository;
@@ -30,7 +31,7 @@ async fn upload_video(
     let mut filename = String::new();
     let mut filepath = String::new();
 
-    while let Ok(Some(mut field)) = payload.try_next().await {
+    while let Ok(Some(field)) = payload.try_next().await {
         let content_disposition = field.content_disposition().ok_or(ApiError::BadRequest(
             "Bad request, invalid syntax".to_string(),
         ))?;
