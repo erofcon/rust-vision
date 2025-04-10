@@ -8,3 +8,4 @@ queue = { path = "../../crates/queue" }
 storage = {path = "../../crates/storage"}
 async-trait = "0.1.88"
 tokio = "1.44.1"
+lapin = "2.5.1"

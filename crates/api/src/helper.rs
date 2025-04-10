@@ -30,9 +30,3 @@ pub async fn delete_file(path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn serialize_payload(video_id: Uuid) -> Result<Vec<u8>, ApiError> {
-    let payload = Payload { id: video_id };
-    bincode::serialize(&payload)
-        .context("Error to serialize payload")
-        .map_err(ApiError::from)
-}

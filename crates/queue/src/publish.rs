@@ -1,3 +1,5 @@
+// TODO: to delete
+
 use crate::utils::QueueType;
 use anyhow::{Context, Result};
 use lapin::options::QueueDeclareOptions;

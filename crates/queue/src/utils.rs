@@ -1,5 +1,7 @@
-use uuid::Uuid;
+use anyhow::{Context, Result};
+
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// QueueType being processed.
 /// All QueueType that are not included in this enumeration will be discarded
@@ -53,4 +55,21 @@ impl TaskStatus {
 #[derive(Serialize, Deserialize)]
 pub struct Payload {
     pub id: Uuid,
+}
+
+impl Payload {
+    pub fn serialize(&self) -> Result<Vec<u8>> {
+        Ok(bincode::serialize(&self)?)
+    }
+
+    pub fn deserialize(data: &[u8]) -> Result<Self> {
+        Ok(bincode::deserialize(data)?)
+    }
+
+    // pub fn serialize_payload(video_id: Uuid) -> anyhow::Result<Vec<u8>, ApiError> {
+    //     let payload = Payload { id: video_id };
+    //     bincode::serialize(&payload)
+    //         .context("Error to serialize payload")
+    //         .map_err(ApiError::from)
+    // }
 }

@@ -20,6 +20,8 @@ async fn main() -> Result<()> {
         database_name: config.db_name.clone(),
     };
 
+    // TODO: check the correctness of copying in app data
+
     let db = Database::new(&db_config.connection_string()).await?;
 
     db.ping().await?;
