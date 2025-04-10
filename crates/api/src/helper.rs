@@ -1,10 +1,8 @@
 use crate::error::ApiError;
 use actix_multipart::Field;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use futures::StreamExt;
-use queue::utils::Payload;
 use std::io::Write;
-use uuid::Uuid;
 
 pub async fn read_field_data(mut field: Field) -> Result<Vec<u8>, ApiError> {
     let mut data = Vec::new();
@@ -29,4 +27,3 @@ pub async fn delete_file(path: String) -> Result<()> {
     std::fs::remove_file(path)?;
     Ok(())
 }
-

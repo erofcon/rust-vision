@@ -384,15 +384,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "api-server"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "queue",
- "tokio",
-]
-
-[[package]]
 name = "asn1-rs"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3604,17 +3595,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f42320e61fe2cfd34354ecb597f86f413484a798ba44a8ca1165c58d42da6c1"
 dependencies = [
  "bitflags 2.9.0",
-]
-
-[[package]]
-name = "worker"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "lapin",
- "queue",
- "storage",
- "tokio",
 ]
 
 [[package]]

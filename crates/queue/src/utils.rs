@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -65,11 +65,4 @@ impl Payload {
     pub fn deserialize(data: &[u8]) -> Result<Self> {
         Ok(bincode::deserialize(data)?)
     }
-
-    // pub fn serialize_payload(video_id: Uuid) -> anyhow::Result<Vec<u8>, ApiError> {
-    //     let payload = Payload { id: video_id };
-    //     bincode::serialize(&payload)
-    //         .context("Error to serialize payload")
-    //         .map_err(ApiError::from)
-    // }
 }
