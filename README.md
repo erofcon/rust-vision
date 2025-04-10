@@ -65,7 +65,7 @@ rust-vision/
 │   │       ├── producer.rs
 │   │       └── consumer.rs
 │   │
-│   ├── video/                # Video Processing Library
+│   ├── streaming/                # Video Processing Library
 │   │   ├── Cargo.toml        #
 │   │   └── src/
 │   │       ├── lib.rs

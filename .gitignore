@@ -1,6 +1,5 @@
 target/
-videos/
-video/
+test_video/
 .idea/
 uploads/
 *.mp4

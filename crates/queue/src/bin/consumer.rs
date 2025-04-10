@@ -19,23 +19,6 @@ impl QueueHandler for TaskHandler {
     }
 }
 
-// #[async_trait]
-// impl QueueHandler for TaskHandler {
-//     async fn handler(
-//         &self,
-//         queue_type: &QueueType,
-//         payload: &[u8],
-//         routing_key: &ShortString,
-//     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-//         let payload = Payload::deserialize(payload)?;
-//
-//         println!("Task completed: {}", queue_type.to_str());
-//         println!("Task completed: {}", payload.id);
-//         println!("Task completed: {}", routing_key.as_str());
-//         Ok(())
-//     }
-// }
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting RabbitMQ worker ...");
