@@ -1,18 +1,19 @@
 use anyhow::{Error, Result};
+use common::config::CommonConfig;
 use std::path::Path;
 use storage::database::Database;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let database_url = "postgres://myuser:mypassword@localhost:5432/myapp";
-    let migrations_path = &Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("migrations");
+    let common_config = CommonConfig::load()?;
 
-    let database = Database::new(database_url).await?;
+    let migrations_path = Path::new(&common_config.database.migrations_path);
+
+    if !migrations_path.exists() {
+        return Err(Error::msg("Migrations directory not found"));
+    };
+
+    let database = Database::new(&common_config.database.connection_string()).await?;
 
     database.migrate(migrations_path).await?;
 

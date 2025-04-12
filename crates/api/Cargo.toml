@@ -18,3 +18,4 @@ sanitize-filename = "0.6.0"
 lapin = "2.5.1"
 storage = { path = "../storage" }
 queue = { path = "../queue" }
+common = { path = "../common" }
