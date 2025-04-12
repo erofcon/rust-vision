@@ -2,27 +2,19 @@ use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use anyhow::Result;
 
-use api::config::Config;
 use api::handlers::{health, publish, video};
+use common::config::{ApiConfig, CommonConfig};
 use queue::connection::MQ;
-use storage::config::DatabaseConfig;
 use storage::database::Database;
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-    let config = Config::from_env()?;
-
-    let db_config = DatabaseConfig {
-        host: config.db_host.clone(),
-        port: config.db_port,
-        username: config.db_user.clone(),
-        password: config.db_password.clone(),
-        database_name: config.db_name.clone(),
-    };
+    let api_config = ApiConfig::load()?;
+    let common_config = CommonConfig::load()?;
 
     // TODO: check the correctness of copying in app data
 
-    let db = Database::new(&db_config.connection_string()).await?;
+    let db = Database::new(&common_config.database.connection_string()).await?;
 
     db.ping().await?;
 
@@ -32,7 +24,7 @@ async fn main() -> Result<()> {
 
     let mq_clone = mq.get_channel().clone();
 
-    println!("Server running on {}:{}", config.host, config.port);
+    println!("Server running on {}:{}", api_config.host, api_config.port);
 
     HttpServer::new(move || {
         // Setting up CORS
@@ -51,7 +43,7 @@ async fn main() -> Result<()> {
             .configure(video::config)
             .configure(publish::config)
     })
-    .bind(format!("{}:{}", config.host, config.port))?
+    .bind(format!("{}:{}", api_config.host, api_config.port))?
     .run()
     .await?;
 
