@@ -87,8 +87,8 @@ impl ApiConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ModelConfig {
-    pub input_width: u16,
-    pub input_height: u16,
+    pub input_width: i32,
+    pub input_height: i32,
 }
 
 impl ModelConfig {
