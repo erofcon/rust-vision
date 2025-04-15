@@ -30,6 +30,15 @@ pub struct MQ {
     pub password: String,
 }
 
+impl MQ {
+    pub fn connection_string(&self) -> String {
+        format!(
+            "amqp://{}:{}@{}:{}",
+            self.user, self.password, self.url, self.port
+        )
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct CommonConfig {
     pub database: DatabaseConfig,

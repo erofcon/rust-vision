@@ -1,37 +1,37 @@
+// TODO: delete in production. make separate crate
 use anyhow::Result;
-use async_trait::async_trait;
-use lapin::types::ShortString;
+use common::config::CommonConfig;
 use queue::connection::MQ;
-use queue::consumer::{Consumer, QueueHandler};
+use queue::consumer::Consumer;
 use queue::utils::{Payload, QueueType};
 use std::error::Error;
-
-struct TaskHandler;
-
-#[async_trait]
-impl QueueHandler for TaskHandler {
-    async fn handler(&self, payload: &[u8], routing_key: &ShortString) -> Result<()> {
-        let payload = Payload::deserialize(payload)?;
-
-        println!("Task completed: {}", payload.id);
-        println!("Task completed: {}", routing_key.as_str());
-        Ok(())
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting RabbitMQ worker ...");
+    let common_config = CommonConfig::load()?;
 
-    let handler = TaskHandler;
-
-    let mq = MQ::new("amqp://guest:guest@localhost:5672").await?;
+    let mq = MQ::new(&common_config.mq.connection_string()).await?;
 
     let channel = mq.get_channel().clone();
 
-    let mut worker = Consumer::new(channel, QueueType::VideoProcessing, handler).await?;
+    let mut consumer = Consumer::new(channel, QueueType::VideoProcessing).await?;
 
-    worker.start().await?;
+    consumer.set_handler(move |payload, routing_key| {
+        let payload_vec = payload.to_vec();
+        let routing_key_str = routing_key.as_str().to_string();
+
+        async move {
+            let payload = Payload::deserialize(&payload_vec).unwrap();
+
+            println!("{}", routing_key_str);
+            println!("{}", payload.id);
+
+            Ok(())
+        }
+    });
+
+    consumer.start().await?;
 
     Ok(())
 }

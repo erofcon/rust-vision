@@ -1,25 +1,25 @@
 use crate::utils::QueueType;
 use anyhow::{Context, Result};
-use async_trait::async_trait;
 use futures_util::StreamExt;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions};
 use lapin::types::{FieldTable, ShortString};
 use lapin::Channel;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
-#[async_trait]
-pub trait QueueHandler: Send + Sync + 'static {
-    async fn handler(&self, payload: &[u8], routing_key: &ShortString) -> Result<()>;
-}
+type HandlerFn = Arc<
+    dyn Fn(&[u8], &ShortString) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync,
+>;
 
-pub struct Consumer<H: QueueHandler> {
+pub struct Consumer {
     channel: Channel,
     consumer: lapin::Consumer,
-    handler: Arc<H>,
+    handler: Option<HandlerFn>,
 }
 
-impl<H: QueueHandler> Consumer<H> {
-    pub async fn new(channel: Channel, queue_type: QueueType, handler: H) -> Result<Self> {
+impl Consumer {
+    pub async fn new(channel: Channel, queue_type: QueueType) -> Result<Self> {
         channel
             .queue_declare(
                 &queue_type.to_str(),
@@ -44,12 +44,27 @@ impl<H: QueueHandler> Consumer<H> {
         Ok(Self {
             channel,
             consumer,
-            handler: Arc::new(handler),
+            handler: None,
         })
     }
 
+    pub fn set_handler<F, Fut>(&mut self, handler_fn: F)
+    where
+        F: Fn(&[u8], &ShortString) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        let handler: HandlerFn =
+            Arc::new(move |payload, routing_key| Box::pin(handler_fn(payload, routing_key)));
+
+        self.handler = Some(handler);
+    }
+
     pub async fn start(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let handler = self.handler.clone();
+        let handler = match self.handler.clone() {
+            Some(handler) => handler,
+            None => return Err("No handler set for consumer".into()),
+        };
+
         let channel = self.channel.clone();
 
         while let Some(delivery) = self.consumer.next().await {
@@ -60,10 +75,8 @@ impl<H: QueueHandler> Consumer<H> {
                     let channel_clone = channel.clone();
 
                     tokio::spawn(async move {
-                        match handler_clone
-                            .handler(&delivery.data, &delivery.routing_key)
-                            .await
-                        {
+                        // TODO: add logging
+                        match handler_clone(&delivery.data, &delivery.routing_key).await {
                             Ok(_) => {
                                 if let Err(e) = channel_clone
                                     .basic_ack(delivery_tag, BasicAckOptions::default())

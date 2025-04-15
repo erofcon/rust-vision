@@ -14,3 +14,6 @@ thiserror = "2.0.12"
 serde_json = "1.0.140"
 serde = { version = "1.0.219", features = ["derive"] }
 bincode = "1.3.3"
+async-std = "1.13.1"
+streaming = { path = "../streaming" }
+common = {path = "../common"}
