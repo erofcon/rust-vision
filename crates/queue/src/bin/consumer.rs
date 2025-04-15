@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let channel = mq.get_channel().clone();
 
-    let mut worker = Consumer::new(channel, QueueType::RunPipeline, handler).await?;
+    let mut worker = Consumer::new(channel, QueueType::VideoProcessing, handler).await?;
 
     worker.start().await?;
 
