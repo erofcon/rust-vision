@@ -8,6 +8,8 @@ use queue::consumer::Consumer;
 use queue::utils::Payload;
 use queue::utils::QueueType;
 use std::sync::Arc;
+use std::time::Duration;
+use storage::models::video::VideoStatus;
 use storage::repositories::video_repository::VideoRepository;
 use streaming::file_pipeline::FilePipeline;
 use tokio::task::JoinHandle;
@@ -47,16 +49,31 @@ fn handle_message(
     model_cfg: Arc<ModelConfig>,
 ) -> BoxFuture<'static, Result<(), anyhow::Error>> {
     Box::pin(async move {
+        // async_std::task::sleep(Duration::from_secs(5)).await;
+
         let payload = Payload::deserialize(&data)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize: {}", e))?;
 
         println!("[Worker {}] Routing Key: {}", worker_id, routing);
         println!("[Worker {}] Payload ID: {}", worker_id, payload.id);
 
-        let video = video_repo
-            .get_by_id(payload.id)
-            .await?
-            .expect("Video not found");
+        let video_result = video_repo.get_by_id(payload.id).await?;
+
+        let video = match video_result {
+            Some(video) => video,
+            None => {
+                return Err(anyhow::anyhow!("Error to get video"));
+            }
+        };
+
+        if video.status == VideoStatus::Cancelled {
+            println!("[Worker {}] Video is cancelled", worker_id);
+            return Ok(());
+        }
+
+        video_repo
+            .change_status(payload.id, &VideoStatus::Processing)
+            .await?;
 
         let stream_url = format!("rtmp://localhost/live/stream_{}", video.id);
 
@@ -71,6 +88,12 @@ fn handle_message(
         let processor = move |frame: &VideoFrame<Readable>| processor_arc(frame);
         pipeline.set_frame_processor(processor);
 
-        pipeline.start()
+        pipeline.start()?;
+
+        video_repo
+            .change_status(payload.id, &VideoStatus::Completed)
+            .await?;
+
+        Ok(())
     })
 }
