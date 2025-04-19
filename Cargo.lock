@@ -4355,8 +4355,12 @@ dependencies = [
  "async-std",
  "common",
  "futures",
+ "gstreamer",
  "queue",
+ "storage",
+ "streaming",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
