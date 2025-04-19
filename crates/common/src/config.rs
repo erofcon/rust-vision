@@ -124,10 +124,6 @@ impl ModelConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkerConfig {
     pub worker_count: u16,
-    pub prefetch_count: u16,
-    pub requeue_on_error: bool,
-    pub max_retries: u16,
-    pub retry_delay_in_sec: u64,
 }
 
 impl WorkerConfig {

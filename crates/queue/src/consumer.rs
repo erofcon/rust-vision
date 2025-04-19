@@ -1,6 +1,5 @@
 use crate::utils::QueueType;
 use anyhow::{Context, Result};
-use common::config::WorkerConfig;
 use futures_util::StreamExt;
 use lapin::options::{
     BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicQosOptions, QueueDeclareOptions,
@@ -10,7 +9,6 @@ use lapin::Channel;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 
 type HandlerFn = Arc<
     dyn Fn(&[u8], &ShortString) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync,
@@ -19,7 +17,6 @@ type HandlerFn = Arc<
 pub struct Consumer {
     channel: Channel,
     consumer: lapin::Consumer,
-    config: WorkerConfig,
     handler: Option<HandlerFn>,
 }
 
@@ -27,11 +24,8 @@ impl Consumer {
     pub async fn new(
         channel: Channel,
         queue_type: QueueType,
-        config: WorkerConfig,
     ) -> Result<Self> {
-        channel
-            .basic_qos(config.prefetch_count, BasicQosOptions::default())
-            .await?;
+        channel.basic_qos(1, BasicQosOptions::default()).await?;
 
         channel
             .queue_declare(
@@ -57,7 +51,6 @@ impl Consumer {
         Ok(Self {
             channel,
             consumer,
-            config,
             handler: None,
         })
     }
@@ -80,7 +73,6 @@ impl Consumer {
         };
 
         let channel = self.channel.clone();
-        let requeue_on_error = self.config.requeue_on_error;
 
         while let Some(delivery) = self.consumer.next().await {
             match delivery {
@@ -88,7 +80,6 @@ impl Consumer {
                     let delivery_tag = delivery.delivery_tag;
                     let handler_clone = handler.clone();
                     let channel_clone = channel.clone();
-                    let requeue = requeue_on_error;
 
                     tokio::spawn(async move {
                         // TODO: add logging
@@ -104,13 +95,7 @@ impl Consumer {
                             Err(e) => {
                                 eprintln!("Error processing message: {}", e);
                                 if let Err(e) = channel_clone
-                                    .basic_nack(
-                                        delivery_tag,
-                                        BasicNackOptions {
-                                            requeue,
-                                            ..BasicNackOptions::default()
-                                        },
-                                    )
+                                    .basic_nack(delivery_tag, BasicNackOptions::default())
                                     .await
                                 {
                                     eprintln!("Error rejecting message: {}", e);
@@ -121,7 +106,6 @@ impl Consumer {
                 }
                 Err(e) => {
                     eprintln!("Error receiving message: {}", e);
-                    tokio::time::sleep(Duration::from_secs(self.config.retry_delay_in_sec)).await;
                 }
             }
         }
