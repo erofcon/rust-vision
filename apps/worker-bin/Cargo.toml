@@ -6,4 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 tokio = "1.44.2"
+queue = {path = "../../crates/queue"}
 common = { path = "../../crates/common" }
+futures = "0.3.31"
+async-std = "1.13.1"

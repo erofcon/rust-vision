@@ -4352,7 +4352,10 @@ name = "worker-bin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-std",
  "common",
+ "futures",
+ "queue",
  "tokio",
 ]
 

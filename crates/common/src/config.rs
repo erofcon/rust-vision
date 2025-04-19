@@ -31,7 +31,7 @@ pub struct MQ {
 }
 
 impl MQ {
-    pub fn connection_string(&self) -> String {
+    pub fn connection_to_string(&self) -> String {
         format!(
             "amqp://{}:{}@{}:{}",
             self.user, self.password, self.url, self.port
@@ -123,11 +123,7 @@ impl ModelConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkerConfig {
-    pub worker_count: u16,
-    pub prefetch_count: u16,
-    pub requeue_on_error: bool,
-    pub max_retries: u16,
-    pub retry_delay: u16,
+    pub worker_count: usize,
 }
 
 impl WorkerConfig {

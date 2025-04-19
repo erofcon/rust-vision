@@ -44,11 +44,11 @@ async fn publish_pipeline(
         .context("Error to publish producer")
         .map_err(ApiError::from)?;
 
-    video_repo
-        .change_status(video_id, &VideoStatus::Waiting)
-        .await
-        .context("Error to change video status")
-        .map_err(ApiError::from)?;
+    // video_repo
+    //     .change_status(video_id, &VideoStatus::Waiting)
+    //     .await
+    //     .context("Error to change video status")
+    //     .map_err(ApiError::from)?;
 
     Ok(HttpResponse::Ok())
 }

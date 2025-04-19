@@ -38,7 +38,7 @@ impl Consumer {
         let consumer = channel
             .basic_consume(
                 &queue_type.to_str(),
-                "consumer",
+                "",
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
