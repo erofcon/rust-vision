@@ -123,7 +123,11 @@ impl ModelConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkerConfig {
-    pub worker_count: u32,
+    pub worker_count: u16,
+    pub prefetch_count: u16,
+    pub requeue_on_error: bool,
+    pub max_retries: u16,
+    pub retry_delay: u16,
 }
 
 impl WorkerConfig {
@@ -134,7 +138,7 @@ impl WorkerConfig {
 
         if !config_path.exists() {
             return Err(ConfigError::NotFound(format!(
-                "Model configuration directory not found: {}",
+                "Worker configuration directory not found: {}",
                 config_path.display()
             )));
         };

@@ -1,1 +1,5 @@
 worker_count = 2
+prefetch_count = 1
+requeue_on_error = true
+max_retries = 2
+retry_delay = 5
