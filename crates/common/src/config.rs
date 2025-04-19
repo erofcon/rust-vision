@@ -127,7 +127,7 @@ pub struct WorkerConfig {
     pub prefetch_count: u16,
     pub requeue_on_error: bool,
     pub max_retries: u16,
-    pub retry_delay: u16,
+    pub retry_delay_in_sec: u64,
 }
 
 impl WorkerConfig {
