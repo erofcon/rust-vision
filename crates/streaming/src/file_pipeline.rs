@@ -253,6 +253,9 @@ impl FilePipeline {
             match msg.view() {
                 gst::MessageView::Eos(..) => {
                     println!("End of stream reached");
+                    self.pipeline
+                        .set_state(gst::State::Null)
+                        .expect("Failed to set pipeline to NULL state");
                     break;
                 }
                 gst::MessageView::Error(err) => {

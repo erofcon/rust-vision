@@ -1,0 +1,17 @@
+[package]
+name = "worker-bin"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+tokio = "1.44.2"
+queue = { path = "../../crates/queue" }
+common = { path = "../../crates/common" }
+futures = "0.3.31"
+async-std = "1.13.1"
+gst = { package = "gstreamer", version = "0.23.5" }
+gst-video = { package = "gstreamer-video", version = "0.23.5" }
+streaming = { path = "../../crates/streaming" }
+storage = { path = "../../crates/storage" }
+lapin = "2.5.1"

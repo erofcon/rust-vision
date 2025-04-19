@@ -30,6 +30,15 @@ pub struct MQ {
     pub password: String,
 }
 
+impl MQ {
+    pub fn connection_to_string(&self) -> String {
+        format!(
+            "amqp://{}:{}@{}:{}",
+            self.user, self.password, self.url, self.port
+        )
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct CommonConfig {
     pub database: DatabaseConfig,
@@ -100,6 +109,32 @@ impl ModelConfig {
         if !config_path.exists() {
             return Err(ConfigError::NotFound(format!(
                 "Model configuration directory not found: {}",
+                config_path.display()
+            )));
+        };
+
+        let file = config_path.join(format!("{}.toml", run_mode));
+
+        let config = Config::builder().add_source(File::from(file)).build()?;
+
+        config.try_deserialize()
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct WorkerConfig {
+    pub worker_count: usize,
+}
+
+impl WorkerConfig {
+    pub fn load() -> Result<Self, ConfigError> {
+        let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "debug".into());
+        let config_dir = env::var("CONFIG_DIR").unwrap_or_else(|_| "config".to_string());
+        let config_path = Path::new(&config_dir).join("worker");
+
+        if !config_path.exists() {
+            return Err(ConfigError::NotFound(format!(
+                "Worker configuration directory not found: {}",
                 config_path.display()
             )));
         };

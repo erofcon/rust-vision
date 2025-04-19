@@ -119,7 +119,7 @@ rust-vision/
 │   │   └── src/
 │   │       └── main.rs       # API Server Entry Point
 │   │
-│   └── worker/               # The worker executable file
+│   └── worker-bin/               # The worker executable file
 │       ├── Cargo.toml        
 │       └── src/
 │           └── main.rs      # Entry point worker

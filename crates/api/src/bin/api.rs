@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
 
     let db_pool = db.get_pool().clone();
 
-    let mq = MQ::new("amqp://guest:guest@localhost:5672").await?;
+    let mq = MQ::new(&common_config.mq.connection_to_string()).await?;
 
     let mq_clone = mq.get_channel().clone();
 
