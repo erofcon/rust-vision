@@ -64,7 +64,7 @@ impl VideoPipeline {
             .build();
         app_sink.set_property("emit-signals", true);
 
-        pipeline.add_many(&[&queue_process, &scale, &caps_filter, app_sink.upcast_ref()])?;
+        pipeline.add_many(&[&queue_process, &scale, &caps_filter, лу.upcast_ref()])?;
         gst::Element::link_many(&[&queue_process, &scale, &caps_filter, app_sink.upcast_ref()])?;
 
         let tee_src_pad_template = tee.pad_template("src_%u").expect("Failed to pad template");

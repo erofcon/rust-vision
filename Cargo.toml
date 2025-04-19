@@ -1,5 +1,5 @@
 ["workspace"]
-members = ["crates/*"]
+members = [ "apps/worker-bin","crates/*"]
 migrate-path = "migrations"
 
 resolver = "2"
