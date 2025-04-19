@@ -24,9 +24,9 @@ async fn publish_pipeline(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    if video.status != VideoStatus::Uploaded && video.status != VideoStatus::Failed {
+    if video.status == VideoStatus::Waiting || video.status == VideoStatus::Processing {
         return Err(ApiError::BadRequest(
-            "Video status is not up-loaded or failed".into(),
+            "The video is already in processing or pending".into(),
         ));
     }
 
@@ -44,15 +44,43 @@ async fn publish_pipeline(
         .context("Error to publish producer")
         .map_err(ApiError::from)?;
 
-    // video_repo
-    //     .change_status(video_id, &VideoStatus::Waiting)
-    //     .await
-    //     .context("Error to change video status")
-    //     .map_err(ApiError::from)?;
+    video_repo
+        .change_status(video_id, &VideoStatus::Waiting)
+        .await
+        .context("Error to change video status")
+        .map_err(ApiError::from)?;
 
     Ok(HttpResponse::Ok())
 }
 
+#[post("/api/v1/video/pipeline/cancel/{id}")]
+async fn pipeline_cancel(
+    pool: web::Data<Pool<Postgres>>,
+    mq: web::Data<Channel>,
+    path: web::Path<Uuid>,
+) -> Result<impl Responder, ApiError> {
+    let video_id = path.into_inner();
+    let video_repo = VideoRepository::new(pool.get_ref().clone());
+
+    let video = video_repo
+        .get_by_id(video_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    if video.status != VideoStatus::Waiting && video.status != VideoStatus::Processing {
+        return Err(ApiError::BadRequest(
+            "Video processing has already been cancelled".into(),
+        ));
+    }
+
+    video_repo
+        .change_status(video_id, &VideoStatus::Cancelled)
+        .await
+        .context("Error to change video status")
+        .map_err(ApiError::from)?;
+
+    Ok(HttpResponse::Ok())
+}
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(publish_pipeline);
+    cfg.service(publish_pipeline).service(pipeline_cancel);
 }

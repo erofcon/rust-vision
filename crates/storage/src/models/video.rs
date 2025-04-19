@@ -12,6 +12,7 @@ pub enum VideoStatus {
     Processing,
     Completed,
     Failed,
+    Cancelled,
 }
 
 #[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
