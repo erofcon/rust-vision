@@ -1,7 +1,7 @@
 -- 20250331_001_create_video_upload.sql
 CREATE TYPE video_status AS ENUM ('uploaded', 'waiting', 'processing', 'completed', 'failed');
 
--- 20250331_001_create_videos_table.sql
+
 CREATE TABLE videos
 (
     id          UUID PRIMARY KEY,
