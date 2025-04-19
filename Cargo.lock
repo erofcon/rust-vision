@@ -4356,11 +4356,12 @@ dependencies = [
  "common",
  "futures",
  "gstreamer",
+ "gstreamer-video",
+ "lapin",
  "queue",
  "storage",
  "streaming",
  "tokio",
- "uuid",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ common = { path = "../../crates/common" }
 futures = "0.3.31"
 async-std = "1.13.1"
 gst = { package = "gstreamer", version = "0.23.5" }
+gst-video = { package = "gstreamer-video", version = "0.23.5" }
 streaming = { path = "../../crates/streaming" }
 storage = { path = "../../crates/storage" }
-uuid = { version = "1.16.0", features = ["v4", "serde"] }
+lapin = "2.5.1"
