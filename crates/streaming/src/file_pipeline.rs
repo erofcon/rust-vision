@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use gst::prelude::{
     Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, GstObjectExt,
     ObjectExt, PadExt,
@@ -9,12 +9,14 @@ use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct FilePipeline {
     pipeline: Pipeline,
     app_sink: AppSink,
     frame_processor:
         Option<Arc<dyn Fn(&VideoFrame<Readable>) -> Result<()> + Send + Sync + 'static>>,
+    cancel_flag: Arc<AtomicBool>,
 }
 
 impl FilePipeline {
@@ -66,6 +68,7 @@ impl FilePipeline {
             pipeline,
             app_sink,
             frame_processor: None,
+            cancel_flag: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -248,8 +251,18 @@ impl FilePipeline {
 
         // Processing messages from the bus
         let bus = self.pipeline.bus().expect("Failed to get pipeline bus");
+        let cancel_flag = Arc::clone(&self.cancel_flag);
+
         for msg in bus.iter_timed(gst::ClockTime::NONE) {
             // TODO: add logging and proper shutdown
+            if cancel_flag.load(Ordering::SeqCst) {
+                println!("Pipeline cancelled");
+                self.pipeline
+                    .set_state(gst::State::Null)
+                    .expect("Failed to set pipeline to NULL state");
+                break;
+            }
+
             match msg.view() {
                 gst::MessageView::Eos(..) => {
                     println!("End of stream reached");
@@ -270,6 +283,21 @@ impl FilePipeline {
             }
         }
 
+        self.pipeline
+            .set_state(gst::State::Null)
+            .expect("Failed to set pipeline to NULL state");
+
         Ok(())
+    }
+
+    pub fn cancel(&self) {
+        self.cancel_flag.store(true, Ordering::SeqCst);
+        self.pipeline
+            .set_state(gst::State::Null)
+            .expect("Failed to set pipeline to NULL state");
+    }
+
+    pub fn get_cancel_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.cancel_flag)
     }
 }
