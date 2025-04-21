@@ -1,6 +1,7 @@
 use crate::frame_processor::build_frame_processor;
 use anyhow::Result;
 use common::config::ModelConfig;
+use common::pipeline_registry::ACTIVE_PIPELINES;
 use futures::future::BoxFuture;
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
@@ -8,6 +9,7 @@ use queue::consumer::Consumer;
 use queue::utils::Payload;
 use queue::utils::QueueType;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use storage::models::video::VideoStatus;
 use storage::repositories::video_repository::VideoRepository;
@@ -49,8 +51,6 @@ fn handle_message(
     model_cfg: Arc<ModelConfig>,
 ) -> BoxFuture<'static, Result<(), anyhow::Error>> {
     Box::pin(async move {
-        // async_std::task::sleep(Duration::from_secs(5)).await;
-
         let payload = Payload::deserialize(&data)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize: {}", e))?;
 
@@ -88,11 +88,55 @@ fn handle_message(
         let processor = move |frame: &VideoFrame<Readable>| processor_arc(frame);
         pipeline.set_frame_processor(processor);
 
-        pipeline.start()?;
+        let video_id = video.id;
+        let cancel_flag = pipeline.get_cancel_flag();
+        ACTIVE_PIPELINES.write().await.insert(video_id, cancel_flag);
 
-        video_repo
-            .change_status(payload.id, &VideoStatus::Completed)
-            .await?;
+        let pipeline_task = tokio::task::spawn_blocking(move || {
+            let result = pipeline.start();
+            if let Err(e) = &result {
+                eprintln!("[Worker {}] Pipeline error: {}", worker_id, e);
+            }
+            result
+        });
+
+        let video_id_clone = video_id;
+        let video_repo_clone = Arc::clone(&video_repo);
+
+        let cancel_checker = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+
+                match video_repo_clone.get_by_id(video_id_clone).await {
+                    Ok(Some(video)) if video.status == VideoStatus::Cancelled => {
+                        if let Some(flag) = ACTIVE_PIPELINES.read().await.get(&video_id_clone) {
+                            flag.store(true, Ordering::SeqCst);
+                        }
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("[Worker {}] Error checking video status: {}", worker_id, e);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let _ = pipeline_task.await?;
+        let _ = cancel_checker.abort();
+
+        ACTIVE_PIPELINES.write().await.remove(&video_id);
+
+        match video_repo.get_by_id(video_id).await? {
+            Some(video) if video.status != VideoStatus::Cancelled => {
+                video_repo
+                    .change_status(video_id, &VideoStatus::Completed)
+                    .await?;
+            }
+            _ => {}
+        }
 
         Ok(())
     })

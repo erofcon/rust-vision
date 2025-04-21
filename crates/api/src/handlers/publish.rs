@@ -1,11 +1,13 @@
 use crate::error::ApiError;
 use actix_web::{post, web, HttpResponse, Responder};
 use anyhow::{Context, Result};
+use common::pipeline_registry::ACTIVE_PIPELINES;
 use lapin::Channel;
 use queue::producer::Producer;
 use queue::utils::Payload;
 use queue::utils::QueueType;
 use sqlx::{Pool, Postgres};
+use std::sync::atomic::Ordering;
 use storage::models::video::VideoStatus;
 use storage::repositories::video_repository::VideoRepository;
 use uuid::Uuid;
@@ -56,7 +58,6 @@ async fn publish_pipeline(
 #[post("/api/v1/video/pipeline/cancel/{id}")]
 async fn pipeline_cancel(
     pool: web::Data<Pool<Postgres>>,
-    mq: web::Data<Channel>,
     path: web::Path<Uuid>,
 ) -> Result<impl Responder, ApiError> {
     let video_id = path.into_inner();
@@ -78,6 +79,10 @@ async fn pipeline_cancel(
         .await
         .context("Error to change video status")
         .map_err(ApiError::from)?;
+
+    if let Some(flag) = ACTIVE_PIPELINES.read().await.get(&video_id) {
+        flag.store(true, Ordering::SeqCst);
+    }
 
     Ok(HttpResponse::Ok())
 }
