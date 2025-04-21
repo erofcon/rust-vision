@@ -222,15 +222,9 @@ impl FilePipeline {
             .clone()
             .ok_or_else(|| anyhow!("Frame processor not set"))?;
 
-        let cancel_flag = Arc::clone(&self.cancel_flag);
-
         self.app_sink.set_callbacks(
             AppSinkCallbacks::builder()
                 .new_sample(move |appsink| {
-                    if cancel_flag.load(Ordering::SeqCst) {
-                        return Err(gst::FlowError::Eos);
-                    }
-
                     // Receiving a frame for processing
                     let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
                     let buffer = sample.buffer().ok_or(gst::FlowError::Error)?;

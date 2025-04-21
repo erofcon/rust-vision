@@ -103,8 +103,9 @@ fn handle_message(
         let video_id_clone = video_id;
         let video_repo_clone = Arc::clone(&video_repo);
 
+        // TODO: find a solution that doesn't poll the database as often
         let cancel_checker = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            let mut interval = tokio::time::interval(Duration::from_secs(2));
             loop {
                 interval.tick().await;
 
@@ -124,8 +125,8 @@ fn handle_message(
             }
         });
 
-        let _ = pipeline_task.await?;
-        let _ = cancel_checker.abort();
+        pipeline_task.await?.expect("Failed to spawn pipeline");
+        cancel_checker.abort();
 
         ACTIVE_PIPELINES.write().await.remove(&video_id);
 
