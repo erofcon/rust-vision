@@ -7,33 +7,8 @@ The system uses Gstreamer and ORT packages for video capture and analytics.
 > [!warning]
 > This project is under active development. Most of the features have not been implemented yet.
 
-### Roadmap to v 0.1.0
-Version 0.1.0 will include basic functionality for detecting and tracking people in video files. Starting video processing will be possible only by uploading a file using a special API. After uploading, the file will be placed in the task queue, where each task will receive a unique identifier to track the processing status. 
 
-The task completion process can be monitored in real time via an RTMP stream, which will allow you to monitor the operation of detection and tracking algorithms. For integration with the API, documentation will be provided, including methods for: 
-- Video file downloads (supported formats: MP4, AVI, MOV) 
-- Request the task status 
-- Obtaining metadata and processing results (coordinates of objects, timestamps) 
-
-The system will provide basic scalability: processing of several tasks will be carried out sequentially, with prioritization in turn.
-
-- [x] **Detecting people using Yolo models**
-  > It is necessary to remove other objects on the screen besides people.
-- [X] **Build a pipeline to capture video from a file**
-- [X] **Combine pipeline and human detection**
-- [X] **Create an image output on an RTMP server**
-  > It is necessary to remove the output branch on the screen
-- [ ] **Create tasks on Rabbitmq to run a video processing task**
-- [ ] **Create an Actix Web API for processing tasks**
-- [ ] **Add a system load monitoring system**
-- [ ] **Add people tracking**
-- [ ] **Add config file**
-- [ ] **Add logging**
-
-
-
-### The approximate structure of the project
-
+### The structure of the project
 
 ```
 rust-vision/
@@ -112,17 +87,13 @@ rust-vision/
 │           ├── routes.rs
 │           └── handlers.rs
 │
-├── apps/                     # Executable applications 
+├── app/                     # Executable applications 
 │   │
-│   ├── api-server/           # API-server
-│   │   ├── Cargo.toml      
-│   │   └── src/
-│   │       └── main.rs       # API Server Entry Point
-│   │
-│   └── worker-bin/               # The worker executable file
-│       ├── Cargo.toml        
-│       └── src/
-│           └── main.rs      # Entry point worker
+│   └── bin/           # The executable file
+│      ├── Cargo.toml      
+│      └── src/
+│          └── main.rs       # Entry worker
+│   
 │
 ├── config/                   # Config files
 │   ├── api/
