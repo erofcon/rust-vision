@@ -1,15 +1,17 @@
-use std::collections::HashMap;
+use crate::video_processing::VideoProcessingManager;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::oneshot;
 use uuid::Uuid;
-use crate::video_processing::VideoProcessingManager;
 
 lazy_static::lazy_static! {
     static ref VIDEO_MANAGER: VideoProcessingManager = VideoProcessingManager::new();
 }
 
-pub fn register_video_processing(video_id: Uuid, stop_flag: Arc<AtomicBool>) -> oneshot::Receiver<()> {
+pub fn register_video_processing(
+    video_id: Uuid,
+    stop_flag: Arc<AtomicBool>,
+) -> oneshot::Receiver<()> {
     VIDEO_MANAGER.register_video(video_id, stop_flag)
 }
 

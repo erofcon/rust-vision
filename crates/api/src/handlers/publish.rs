@@ -7,7 +7,6 @@ use queue::producer::Producer;
 use queue::utils::Payload;
 use queue::utils::QueueType;
 use sqlx::{Pool, Postgres};
-use std::sync::atomic::Ordering;
 use storage::models::video::VideoStatus;
 use storage::repositories::video_repository::VideoRepository;
 use uuid::Uuid;
@@ -74,16 +73,14 @@ async fn pipeline_cancel(
         ));
     }
 
-    // Если видео в обработке, пытаемся остановить его через менеджер
     if video.status == VideoStatus::Processing {
         if stop_video_processing(&video_id) {
-            println!("Отправлен запрос на остановку обработки видео {}", video_id);
+            println!("Request to stop video processing sent {}", video_id);
         } else {
-            println!("Не удалось найти активную обработку для видео {}", video_id);
+            println!("Could not find active processing for video {}", video_id);
         }
     }
 
-    // В любом случае обновляем статус в БД
     video_repo
         .change_status(video_id, &VideoStatus::Cancelled)
         .await

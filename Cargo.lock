@@ -4374,23 +4374,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "worker-bin"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-std",
- "common",
- "futures",
- "gstreamer",
- "gstreamer-video",
- "lapin",
- "queue",
- "storage",
- "streaming",
- "tokio",
-]
-
-[[package]]
 name = "write16"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

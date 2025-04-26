@@ -1,7 +1,6 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use gst::prelude::{
-    Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, GstObjectExt,
-    ObjectExt, PadExt,
+    Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, ObjectExt, PadExt,
 };
 use gst::{Bin, Element, ElementFactory, Pipeline, element_warning};
 use gst_app::{AppSink, AppSinkCallbacks};
@@ -100,7 +99,6 @@ impl FilePipeline {
         let app_sink = AppSink::builder().drop(true).max_buffers(1).build();
         app_sink.set_property("emit-signals", true);
 
-        // Clone app_sink before upcast to avoid the ownership issue
         let app_sink_element = app_sink.clone().upcast();
         Ok((vec![queue, scale, caps_filter, app_sink_element], app_sink))
     }
@@ -219,7 +217,6 @@ impl FilePipeline {
     pub fn start(&mut self) -> Result<()> {
         let should_stop = self.should_stop.clone();
 
-        // Set up frame handler
         let processor = self
             .frame_processor
             .clone()
@@ -228,12 +225,9 @@ impl FilePipeline {
         self.app_sink.set_callbacks(
             AppSinkCallbacks::builder()
                 .new_sample(move |appsink| {
-                    // Receiving a frame for processing
                     let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
                     let buffer = sample.buffer().ok_or(gst::FlowError::Error)?;
                     let caps = sample.caps().ok_or(gst::FlowError::Error)?;
-
-                    // Creating and processing a video frame
                     let info =
                         gst_video::VideoInfo::from_caps(caps).map_err(|_| gst::FlowError::Error)?;
 
@@ -252,43 +246,39 @@ impl FilePipeline {
 
         self.pipeline.set_state(gst::State::Playing)?;
 
-        // Processing messages from the bus
         let bus = self.pipeline.bus().expect("Failed to get pipeline bus");
 
         loop {
             if should_stop.load(Ordering::SeqCst) {
-                println!("Обнаружен запрос на остановку pipeline");
+                println!("Request to stop pipeline detected");
                 break;
             }
 
             // TODO: add logging and proper shutdown
 
             match bus.timed_pop(gst::ClockTime::from_mseconds(50)) {
-                Some(msg) => {
-                    match msg.view() {
-                        gst::MessageView::Eos(..) => {
-                            println!("Получено EOS сообщение, завершаем обработку");
-                            break;
-                        }
-                        gst::MessageView::Error(err) => {
-                            let error = err.error();
-                            let debug = err.debug();
-                            println!("Ошибка: {}, debug: {:?}", error, debug);
-                            return Err(anyhow!("GStreamer error: {}", error));
-                        }
-                        gst::MessageView::StateChanged(state) => {
-                            // Отслеживаем изменения состояния для элементов pipeline
-                            if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
-                                let old = state.old();
-                                let new = state.current();
-                                println!("Pipeline изменил состояние: {:?} -> {:?}", old, new);
-                            }
-                        }
-                        _ => {} // Игнорируем другие сообщения
+                Some(msg) => match msg.view() {
+                    gst::MessageView::Eos(..) => {
+                        println!("EOS message received, finishing processing");
+                        break;
                     }
-                }
+                    gst::MessageView::Error(err) => {
+                        let error = err.error();
+                        let debug = err.debug();
+                        println!("Error: {}, debug: {:?}", error, debug);
+                        return Err(anyhow!("GStreamer error: {}", error));
+                    }
+                    gst::MessageView::StateChanged(state) => {
+                        if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
+                            let old = state.old();
+                            let new = state.current();
+                            println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
+                        }
+                    }
+                    _ => {}
+                },
                 None => {
-                    // Таймаут, продолжаем цикл
+                    // Timeout, continue the cycle
                 }
             }
         }
@@ -308,51 +298,20 @@ impl FilePipeline {
         self.should_stop.store(true, Ordering::SeqCst);
 
         if !self.pipeline.send_event(gst::event::Eos::new()) {
-            println!("Не удалось отправить EOS событие");
+            println!("Failed to send EOS event");
         }
 
-        // Ждем завершения с таймаутом
         let start = std::time::Instant::now();
         while start.elapsed().as_millis() < timeout_ms as u128 {
-            // Проверяем состояние
             let state = self.pipeline.current_state();
             if state == gst::State::Null || state == gst::State::Ready {
                 return Ok(());
             }
-
-            // Небольшая пауза для снижения нагрузки
             std::thread::sleep(Duration::from_millis(50));
         }
 
-        // Если таймаут истек, принудительно останавливаем
         println!("Принудительная остановка pipeline");
         self.pipeline.set_state(gst::State::Null)?;
-
-        // Если pipeline инициализирован, посылаем EOS событие
-        // if let Some(pipeline) = &self.pipeline {
-        //     // Отправляем EOS событие
-        //     println!("Отправка события EOS в pipeline...");
-        //     if !pipeline.send_event(gst::event::Eos::new()) {
-        //         println!("Не удалось отправить EOS событие");
-        //     }
-        //
-        //     // Ждем завершения с таймаутом
-        //     let start = std::time::Instant::now();
-        //     while start.elapsed().as_millis() < timeout_ms as u128 {
-        //         // Проверяем состояние
-        //         let state = pipeline.current_state();
-        //         if state == gst::State::Null || state == gst::State::Ready {
-        //             return Ok(());
-        //         }
-        //
-        //         // Небольшая пауза для снижения нагрузки
-        //         std::thread::sleep(Duration::from_millis(50));
-        //     }
-        //
-        //     // Если таймаут истек, принудительно останавливаем
-        //     println!("Принудительная остановка pipeline");
-        //     pipeline.set_state(gst::State::Null)?;
-        // }
 
         Ok(())
     }
