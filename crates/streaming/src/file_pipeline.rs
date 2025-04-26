@@ -1,7 +1,6 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use gst::prelude::{
-    Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, GstObjectExt,
-    ObjectExt, PadExt,
+    Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, ObjectExt, PadExt,
 };
 use gst::{Bin, Element, ElementFactory, Pipeline, element_warning};
 use gst_app::{AppSink, AppSinkCallbacks};
@@ -10,13 +9,14 @@ use gst_video::video_frame::Readable;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 pub struct FilePipeline {
     pipeline: Pipeline,
     app_sink: AppSink,
     frame_processor:
         Option<Arc<dyn Fn(&VideoFrame<Readable>) -> Result<()> + Send + Sync + 'static>>,
-    cancel_flag: Arc<AtomicBool>,
+    should_stop: Arc<AtomicBool>,
 }
 
 impl FilePipeline {
@@ -68,7 +68,7 @@ impl FilePipeline {
             pipeline,
             app_sink,
             frame_processor: None,
-            cancel_flag: Arc::new(AtomicBool::new(false)),
+            should_stop: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -99,7 +99,6 @@ impl FilePipeline {
         let app_sink = AppSink::builder().drop(true).max_buffers(1).build();
         app_sink.set_property("emit-signals", true);
 
-        // Clone app_sink before upcast to avoid the ownership issue
         let app_sink_element = app_sink.clone().upcast();
         Ok((vec![queue, scale, caps_filter, app_sink_element], app_sink))
     }
@@ -216,7 +215,8 @@ impl FilePipeline {
     }
 
     pub fn start(&mut self) -> Result<()> {
-        // Set up frame handler
+        let should_stop = self.should_stop.clone();
+
         let processor = self
             .frame_processor
             .clone()
@@ -225,12 +225,9 @@ impl FilePipeline {
         self.app_sink.set_callbacks(
             AppSinkCallbacks::builder()
                 .new_sample(move |appsink| {
-                    // Receiving a frame for processing
                     let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
                     let buffer = sample.buffer().ok_or(gst::FlowError::Error)?;
                     let caps = sample.caps().ok_or(gst::FlowError::Error)?;
-
-                    // Creating and processing a video frame
                     let info =
                         gst_video::VideoInfo::from_caps(caps).map_err(|_| gst::FlowError::Error)?;
 
@@ -249,37 +246,40 @@ impl FilePipeline {
 
         self.pipeline.set_state(gst::State::Playing)?;
 
-        // Processing messages from the bus
         let bus = self.pipeline.bus().expect("Failed to get pipeline bus");
-        let cancel_flag = Arc::clone(&self.cancel_flag);
 
-        for msg in bus.iter_timed(gst::ClockTime::NONE) {
-            // TODO: add logging and proper shutdown
-            if cancel_flag.load(Ordering::SeqCst) {
-                println!("Pipeline cancelled");
-                self.pipeline
-                    .set_state(gst::State::Null)
-                    .expect("Failed to set pipeline to NULL state");
+        loop {
+            if should_stop.load(Ordering::SeqCst) {
+                println!("Request to stop pipeline detected");
                 break;
             }
 
-            match msg.view() {
-                gst::MessageView::Eos(..) => {
-                    println!("End of stream reached");
-                    self.pipeline
-                        .set_state(gst::State::Null)
-                        .expect("Failed to set pipeline to NULL state");
-                    break;
+            // TODO: add logging and proper shutdown
+
+            match bus.timed_pop(gst::ClockTime::from_mseconds(50)) {
+                Some(msg) => match msg.view() {
+                    gst::MessageView::Eos(..) => {
+                        println!("EOS message received, finishing processing");
+                        break;
+                    }
+                    gst::MessageView::Error(err) => {
+                        let error = err.error();
+                        let debug = err.debug();
+                        println!("Error: {}, debug: {:?}", error, debug);
+                        return Err(anyhow!("GStreamer error: {}", error));
+                    }
+                    gst::MessageView::StateChanged(state) => {
+                        if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
+                            let old = state.old();
+                            let new = state.current();
+                            println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
+                        }
+                    }
+                    _ => {}
+                },
+                None => {
+                    // Timeout, continue the cycle
                 }
-                gst::MessageView::Error(err) => {
-                    let src_name = err
-                        .src()
-                        .map(|s| s.name())
-                        .unwrap_or_else(|| "unknown".into());
-                    println!("Error from {}: {}", src_name, err);
-                    break;
-                }
-                _ => (),
             }
         }
 
@@ -290,14 +290,29 @@ impl FilePipeline {
         Ok(())
     }
 
-    pub fn cancel(&self) {
-        self.cancel_flag.store(true, Ordering::SeqCst);
-        self.pipeline
-            .set_state(gst::State::Null)
-            .expect("Failed to set pipeline to NULL state");
+    pub fn get_stop_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.should_stop)
     }
 
-    pub fn get_cancel_flag(&self) -> Arc<AtomicBool> {
-        Arc::clone(&self.cancel_flag)
+    pub fn stop(&mut self, timeout_ms: u64) -> Result<()> {
+        self.should_stop.store(true, Ordering::SeqCst);
+
+        if !self.pipeline.send_event(gst::event::Eos::new()) {
+            println!("Failed to send EOS event");
+        }
+
+        let start = std::time::Instant::now();
+        while start.elapsed().as_millis() < timeout_ms as u128 {
+            let state = self.pipeline.current_state();
+            if state == gst::State::Null || state == gst::State::Ready {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        println!("Принудительная остановка pipeline");
+        self.pipeline.set_state(gst::State::Null)?;
+
+        Ok(())
     }
 }

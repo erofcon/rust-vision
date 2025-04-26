@@ -1,5 +1,5 @@
 [package]
-name = "worker-bin"
+name = "bin"
 version = "0.1.0"
 edition = "2024"
 
@@ -15,3 +15,9 @@ gst-video = { package = "gstreamer-video", version = "0.23.5" }
 streaming = { path = "../../crates/streaming" }
 storage = { path = "../../crates/storage" }
 lapin = "2.5.1"
+uuid = { version = "1.16.0", features = ["v4"] }
+actix-web = "4.10.2"
+actix-cors = "0.7.1"
+actix-multipart = "0.7.2"
+api = {path = "../../crates/api"}
+parking_lot = "0.12.3"

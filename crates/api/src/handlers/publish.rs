@@ -1,13 +1,12 @@
 use crate::error::ApiError;
 use actix_web::{post, web, HttpResponse, Responder};
 use anyhow::{Context, Result};
-use common::pipeline_registry::ACTIVE_PIPELINES;
+use common::pipeline_registry::stop_video_processing;
 use lapin::Channel;
 use queue::producer::Producer;
 use queue::utils::Payload;
 use queue::utils::QueueType;
 use sqlx::{Pool, Postgres};
-use std::sync::atomic::Ordering;
 use storage::models::video::VideoStatus;
 use storage::repositories::video_repository::VideoRepository;
 use uuid::Uuid;
@@ -74,15 +73,19 @@ async fn pipeline_cancel(
         ));
     }
 
+    if video.status == VideoStatus::Processing {
+        if stop_video_processing(&video_id) {
+            println!("Request to stop video processing sent {}", video_id);
+        } else {
+            println!("Could not find active processing for video {}", video_id);
+        }
+    }
+
     video_repo
         .change_status(video_id, &VideoStatus::Cancelled)
         .await
         .context("Error to change video status")
         .map_err(ApiError::from)?;
-
-    if let Some(flag) = ACTIVE_PIPELINES.read().await.get(&video_id) {
-        flag.store(true, Ordering::SeqCst);
-    }
 
     Ok(HttpResponse::Ok())
 }
