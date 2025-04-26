@@ -1,6 +1,6 @@
 use crate::frame_processor::build_frame_processor;
 use anyhow::Result;
-use common::config::ModelConfig;
+use common::config::BaseDetectionModel;
 use common::pipeline_registry::{register_video_processing, unregister_video_processing};
 use futures::future::BoxFuture;
 use gst_video::VideoFrame;
@@ -18,7 +18,7 @@ pub async fn spawn_worker(
     worker_id: usize,
     channel: lapin::Channel,
     video_repo: Arc<VideoRepository>,
-    model_cfg: Arc<ModelConfig>,
+    model_cfg: Arc<BaseDetectionModel>,
 ) -> JoinHandle<()> {
     let mut consumer = Consumer::new(channel, QueueType::VideoProcessing)
         .await
@@ -46,8 +46,10 @@ fn handle_message(
     data: Vec<u8>,
     routing: String,
     video_repo: Arc<VideoRepository>,
-    model_cfg: Arc<ModelConfig>,
+    model_cfg: Arc<BaseDetectionModel>,
 ) -> BoxFuture<'static, Result<(), anyhow::Error>> {
+    // TODO: check fault tolerance
+
     Box::pin(async move {
         let payload = Payload::deserialize(&data)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize: {}", e))?;

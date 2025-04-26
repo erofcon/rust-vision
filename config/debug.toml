@@ -1,0 +1,25 @@
+[api]
+host = "127.0.0.1"
+port = 9876
+upload_dir = "uploads"
+
+[database]
+url = "localhost"
+port = 5432
+user = "myuser"
+password = "mypassword"
+database = "myapp"
+migrations_path = "migrations"
+
+[mq]
+url = "localhost"
+port = 5672
+user = "guest"
+password = "guest"
+
+[base_detection_model]
+input_width = 640
+input_height = 640
+
+[worker]
+worker_count = 2
