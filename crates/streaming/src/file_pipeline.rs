@@ -1,3 +1,5 @@
+use crate::discover;
+use crate::utils::FrameProcessor;
 use anyhow::{Result, anyhow};
 use gst::prelude::{
     Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, ObjectExt, PadExt,
@@ -14,8 +16,9 @@ use std::time::Duration;
 pub struct FilePipeline {
     pipeline: Pipeline,
     app_sink: AppSink,
-    frame_processor:
-        Option<Arc<dyn Fn(&VideoFrame<Readable>) -> Result<()> + Send + Sync + 'static>>,
+    original_w: i32,
+    original_h: i32,
+    frame_processor: Option<Arc<FrameProcessor>>,
     should_stop: Arc<AtomicBool>,
 }
 
@@ -26,7 +29,10 @@ impl FilePipeline {
         scale_height: i32,
         rtmp_url: &str,
     ) -> Result<Self> {
+        println!("Initializing FilePipeline, {}", file_path);
         let pipeline = Pipeline::new();
+
+        let file_info = discover::discover(&file_path)?;
 
         let source = Self::create_file_source(file_path)?;
         let elements = [
@@ -67,6 +73,8 @@ impl FilePipeline {
         Ok(FilePipeline {
             pipeline,
             app_sink,
+            original_w: file_info.width,
+            original_h: file_info.height,
             frame_processor: None,
             should_stop: Arc::new(AtomicBool::new(false)),
         })
@@ -74,7 +82,7 @@ impl FilePipeline {
 
     pub fn set_frame_processor<F>(&mut self, f: F)
     where
-        F: Fn(&VideoFrame<Readable>) -> Result<()> + Send + Sync + 'static,
+        F: Fn(&VideoFrame<Readable>, &i32, &i32) -> Result<()> + Send + Sync + 'static,
     {
         self.frame_processor = Some(Arc::new(f));
     }
@@ -222,6 +230,9 @@ impl FilePipeline {
             .clone()
             .ok_or_else(|| anyhow!("Frame processor not set"))?;
 
+        let original_w = self.original_w.clone();
+        let original_h = self.original_h.clone();
+
         self.app_sink.set_callbacks(
             AppSinkCallbacks::builder()
                 .new_sample(move |appsink| {
@@ -234,7 +245,7 @@ impl FilePipeline {
                     let frame = gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info)
                         .map_err(|_| gst::FlowError::Error)?;
 
-                    if let Err(err) = processor(&frame) {
+                    if let Err(err) = processor(&frame, &original_w, &original_h) {
                         // TODO: add to log
                         eprintln!("Error processing frame: {:?}", err);
                     }

@@ -4,42 +4,86 @@ use actix_web::{App, HttpServer, web};
 use anyhow::Result;
 use api::handlers::{health, publish, video};
 use common::config::ProjectConfig;
+use detection::model::Model;
 use queue::connection::MQ;
 use std::sync::Arc;
 use storage::database::Database;
 use storage::repositories::video_repository::VideoRepository;
+use tokio::sync::broadcast;
 
 mod frame_processor;
 mod handler;
 
 #[actix_web::main]
 async fn main() -> Result<()> {
+    // Initialize GStreamer
     gst::init()?;
+
+    // Load configuration
     let config = ProjectConfig::load()?;
 
+
+    // Load detection model once
+    let model = Arc::new(Model::new(&config.base_detection_model.path)?);
+    println!(
+        "Loaded detection model from {}",
+        config.base_detection_model.path
+    );
+
+    // Initialize database
     let db = Database::new(&config.database.connection_string()).await?;
     db.ping().await?;
-
     let db_pool = db.get_pool().clone();
 
+    // Initialize message queue
     let mq = MQ::new(&config.mq.connection_to_string()).await?;
     let mq_channel = mq.get_channel().clone();
 
-    println!("Spawning {} worker(s)...", &config.worker.worker_count);
+    // Video repository
     let video_repo = Arc::new(VideoRepository::new(db_pool.clone()));
-    for id in 0..config.worker.worker_count {
-        let chan = mq.get_channel().clone();
-        let repo = Arc::clone(&video_repo);
-        let model = Arc::new(config.base_detection_model.clone());
 
-        actix_web::rt::spawn(async move {
-            let _ = handler::spawn_worker(id, chan, repo, model).await;
+    let (in_w, in_h) = (
+        config.base_detection_model.input_width,
+        config.base_detection_model.input_height,
+    );
+
+    // Build shared frame processor
+    let frame_processor = frame_processor::build_frame_processor(Arc::clone(&model), &in_w, &in_h);
+
+    println!("Spawning {} worker(s)...", config.worker.worker_count);
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+
+    // Spawn workers
+    for id in 0..config.worker.worker_count {
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        let repo = Arc::clone(&video_repo);
+        let chan = mq_channel.clone();
+        let processor = Arc::clone(&frame_processor);
+
+        tokio::spawn(async move {
+            // Spawn consumer and return its JoinHandle
+            let handle = handler::spawn_worker(id, chan, repo, processor, in_w, in_h).await;
+
+            tokio::select! {
+                _ = shutdown_rx.recv() => {
+                    println!("Worker {} received shutdown signal", id);
+                }
+                res = handle => {
+                    if let Err(e) = res {
+                        eprintln!("Worker {} panicked: {:?}", id, e);
+                    }
+                }
+            }
+
+            println!("Worker {} stopped", id);
         });
     }
-    let bind_addr = format!("{}:{}", &config.api.host, &config.api.port);
+
+    // Start HTTP server
+    let bind_addr = format!("{}:{}", config.api.host, config.api.port);
     println!("Starting HTTP server on {}", bind_addr);
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
@@ -56,8 +100,15 @@ async fn main() -> Result<()> {
             .configure(publish::config)
     })
     .bind(&bind_addr)?
-    .run()
-    .await?;
+    .run();
 
-    Ok(())
+    // Graceful shutdown
+    tokio::select! {
+        res = server => res.map_err(|e| anyhow::anyhow!(e)),
+        _ = tokio::signal::ctrl_c() => {
+            println!("Shutdown signal received in main");
+            Ok(())
+        }
+    }
+    .map(|_| ())
 }

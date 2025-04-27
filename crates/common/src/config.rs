@@ -48,6 +48,7 @@ impl MQ {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct BaseDetectionModel {
+    pub path: String,
     pub input_width: i32,
     pub input_height: i32,
 }

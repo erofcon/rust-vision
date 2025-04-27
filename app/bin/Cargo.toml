@@ -19,5 +19,7 @@ uuid = { version = "1.16.0", features = ["v4"] }
 actix-web = "4.10.2"
 actix-cors = "0.7.1"
 actix-multipart = "0.7.2"
-api = {path = "../../crates/api"}
+api = { path = "../../crates/api" }
+detection = { path = "../../crates/detection" }
 parking_lot = "0.12.3"
+tracing = "0.1.41"
