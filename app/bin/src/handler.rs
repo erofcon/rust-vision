@@ -42,7 +42,7 @@ pub async fn spawn_worker(
 }
 
 fn handle_message(
-    worker_id: usize,
+    _worker_id: usize,
     data: Vec<u8>,
     _routing: String,
     video_repo: Arc<VideoRepository>,

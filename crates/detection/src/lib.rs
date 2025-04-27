@@ -1,3 +1,3 @@
 pub mod model;
-mod inference;
+pub mod inference;
 mod utils;
