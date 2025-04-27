@@ -1,9 +1,6 @@
 use anyhow::{Result, anyhow};
-use common::config::BaseDetectionModel;
 use common::pipeline_registry::{register_video_processing, unregister_video_processing};
 use futures::future::BoxFuture;
-use gst_video::VideoFrame;
-use gst_video::video_frame::Readable;
 use queue::consumer::Consumer;
 use queue::utils::{Payload, QueueType};
 use std::sync::Arc;
@@ -25,7 +22,6 @@ pub async fn spawn_worker(
         .await
         .expect("Failed to create consumer");
 
-    // Set message handler
     consumer.set_handler(move |data, routing| {
         handle_message(
             worker_id,
@@ -38,7 +34,6 @@ pub async fn spawn_worker(
         )
     });
 
-    // Start consuming
     tokio::spawn(async move {
         if let Err(e) = consumer.start().await {
             eprintln!("[Worker {}] Consumer error: {}", worker_id, e);
@@ -49,7 +44,7 @@ pub async fn spawn_worker(
 fn handle_message(
     worker_id: usize,
     data: Vec<u8>,
-    routing: String,
+    _routing: String,
     video_repo: Arc<VideoRepository>,
     frame_processor: Arc<FrameProcessor>,
     input_width: i32,
@@ -115,69 +110,5 @@ fn handle_message(
         unregister_video_processing(&id);
 
         inner_res
-
-        // let payload = Payload::deserialize(&data)?;
-        //
-        // println!(
-        //     "[Worker {}] Routing: {}, ID: {}",
-        //     worker_id, routing, payload.id
-        // );
-        //
-        // // Fetch video record
-        // let video = video_repo
-        //     .get_by_id(payload.id)
-        //     .await?
-        //     .ok_or_else(|| anyhow::anyhow!("Video not found"))?;
-        //
-        // if video.status == VideoStatus::Cancelled {
-        //     println!("[Worker {}] Video cancelled", worker_id);
-        //     return Ok(());
-        // }
-        //
-        // // Update status to Processing
-        // video_repo
-        //     .change_status(payload.id, &VideoStatus::Processing)
-        //     .await
-        //     .ok();
-        //
-        // // Prepare pipeline
-        // let stream_url = format!("rtmp://localhost/live/stream{}", video.id);
-        // let mut pipeline =
-        //     FilePipeline::new(&video.file_path, input_width, input_height, &stream_url)?;
-        //
-        // let stop_flag = pipeline.get_stop_flag();
-        // let cancel_rx = register_video_processing(video.id, stop_flag.clone());
-        //
-        // // Attach frame processor directly
-        // pipeline.set_frame_processor(move |frame| frame_processor(frame));
-        //
-        // // Run pipeline in blocking task
-        // let pipeline_handle = tokio::task::spawn_blocking(move || pipeline.start());
-        //
-        // tokio::select! {
-        //     _ = cancel_rx => {
-        //         println!("[Worker {}] Cancel signal received", worker_id);
-        //         stop_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-        //     }
-        //     result = pipeline_handle => {
-        //         if let Err(e) = result {
-        //             eprintln!("[Worker {}] Pipeline error: {:?}", worker_id, e);
-        //         }
-        //     }
-        // }
-        //
-        // // Finalize status
-        // let final_status = if stop_flag.load(std::sync::atomic::Ordering::SeqCst) {
-        //     VideoStatus::Cancelled
-        // } else {
-        //     VideoStatus::Completed
-        // };
-        // video_repo
-        //     .change_status(payload.id, &final_status)
-        //     .await
-        //     .ok();
-        // unregister_video_processing(&video.id);
-        //
-        // Ok(())
     })
 }
