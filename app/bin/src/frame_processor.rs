@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use detection::inference::run;
 use detection::model::Model;
 use detection::utils::BoundingBox;
@@ -30,11 +30,9 @@ pub fn build_frame_processor(
                 Some(&[0]),
             )?;
 
-            let mut boxes = bounding_box
-                .lock()
-                .map_err(|e| anyhow!("Failed to lock bounding_box mutex: {:?}", e))?;
-
-            *boxes = result;
+            if let Ok(mut boxes) = bounding_box.lock() {
+                *boxes = result;
+            }
 
             Ok(())
         },

@@ -107,6 +107,10 @@ impl FilePipeline {
         let queue = ElementFactory::make("queue")
             .name("queue_process")
             .build()?;
+
+        queue.set_property("max-size-buffers", 1u32);
+        queue.set_property("max-size-time", 0u64);
+
         let scale = ElementFactory::make("videoscale").build()?;
 
         let caps_filter = gst::ElementFactory::make("capsfilter").build()?;
@@ -126,10 +130,18 @@ impl FilePipeline {
 
     fn create_display_branch() -> Result<Vec<Element>> {
         // TODO: removed in production
+        let queue = ElementFactory::make("queue")
+            .name("queue_display")
+            .build()?;
+
+        queue.set_property("max-size-buffers", 1u32);
+        queue.set_property("max-size-time", 0u64);
+
         Ok(vec![
-            ElementFactory::make("queue")
-                .name("queue_display")
-                .build()?,
+            // ElementFactory::make("queue")
+            //     .name("queue_display")
+            //     .build()?,
+            queue,
             ElementFactory::make("videoconvert").build()?,
             ElementFactory::make("autovideosink").build()?,
         ])
@@ -137,7 +149,10 @@ impl FilePipeline {
 
     fn create_rtmp_branch(rtmp_url: &str) -> Result<Vec<gst::Element>> {
         let queue = ElementFactory::make("queue").name("queue_rtmp").build()?;
-        queue.set_property("max-size-buffers", 1000u32);
+        // queue.set_property("max-size-buffers", 1000u32);
+        // queue.set_property("max-size-buffers", 1u32);
+        // queue.set_property("max-size-time", 0u64);
+        // queue.set_property_from_str("leaky", "downstream");
 
         let convert = ElementFactory::make("videoconvert").build()?;
 
@@ -369,7 +384,7 @@ impl FilePipeline {
             std::thread::sleep(Duration::from_millis(50));
         }
 
-        println!("Принудительная остановка pipeline");
+        println!("Stopping pipeline");
         self.pipeline.set_state(gst::State::Null)?;
 
         Ok(())

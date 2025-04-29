@@ -72,7 +72,7 @@ fn handle_message(
                 return Ok(());
             }
 
-            let stream_url = format!("rtmp://localhost/live/stream{}", id);
+            let stream_url = format!("rtmp://localhost/live/stream_{}", id);
             let mut pipeline =
                 FilePipeline::new(&video.file_path, input_width, input_height, &stream_url)?;
             let stop_flag = pipeline.get_stop_flag();
