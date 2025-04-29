@@ -18,6 +18,8 @@ pub async fn spawn_worker(
     input_width: i32,
     input_height: i32,
 ) -> JoinHandle<()> {
+    //TODO: check queue type
+
     let mut consumer = Consumer::new(channel, QueueType::VideoProcessing)
         .await
         .expect("Failed to create consumer");
@@ -76,8 +78,8 @@ fn handle_message(
             let stop_flag = pipeline.get_stop_flag();
             let cancel_rx = register_video_processing(id, stop_flag.clone());
 
-            pipeline.set_frame_processor(move |frame, original_w, original_h| {
-                frame_processor(frame, original_w, original_h)
+            pipeline.set_frame_processor(move |frame, bounding_box, original_w, original_h| {
+                frame_processor(frame, bounding_box, original_w, original_h)
             });
             let pipeline_handle = tokio::task::spawn_blocking(move || pipeline.start());
 

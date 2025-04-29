@@ -1,6 +1,7 @@
 use crate::discover;
 use crate::utils::FrameProcessor;
 use anyhow::{Result, anyhow};
+use detection::utils::BoundingBox;
 use gst::prelude::{
     Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, ObjectExt, PadExt,
 };
@@ -9,8 +10,8 @@ use gst_app::{AppSink, AppSinkCallbacks};
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct FilePipeline {
@@ -18,7 +19,9 @@ pub struct FilePipeline {
     app_sink: AppSink,
     original_w: i32,
     original_h: i32,
+    overlay: Element,
     frame_processor: Option<Arc<FrameProcessor>>,
+    bounding_box: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
     should_stop: Arc<AtomicBool>,
 }
 
@@ -75,14 +78,24 @@ impl FilePipeline {
             app_sink,
             original_w: file_info.width,
             original_h: file_info.height,
+            overlay: cairooverlay,
             frame_processor: None,
+            bounding_box: Arc::new(Mutex::new(vec![])),
             should_stop: Arc::new(AtomicBool::new(false)),
         })
     }
 
     pub fn set_frame_processor<F>(&mut self, f: F)
     where
-        F: Fn(&VideoFrame<Readable>, &i32, &i32) -> Result<()> + Send + Sync + 'static,
+        F: Fn(
+                &VideoFrame<Readable>,
+                Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+                &i32,
+                &i32,
+            ) -> Result<()>
+            + Send
+            + Sync
+            + 'static,
     {
         self.frame_processor = Some(Arc::new(f));
     }
@@ -222,6 +235,35 @@ impl FilePipeline {
         Ok(())
     }
 
+    fn bounding_box_draw(&self) {
+        let bounding_box = self.bounding_box.clone();
+
+        self.overlay.connect("draw", false, move |args| {
+            if let Ok(bounding_box) = bounding_box.lock() {
+                let cr = args[1].get::<&cairo::Context>().unwrap();
+                for (bbox, _, confidence) in bounding_box.iter() {
+                    //set color
+                    cr.set_source_rgb(1.0, 0.0, 0.0);
+                    cr.set_line_width(2.0);
+
+                    cr.rectangle(
+                        bbox.x1 as f64,
+                        bbox.y1 as f64,
+                        (bbox.x2 - bbox.x1) as f64,
+                        (bbox.y2 - bbox.y1) as f64,
+                    );
+
+                    cr.stroke().expect("Failed to stroke");
+                    let label = format!("{:.2}", confidence);
+                    cr.move_to(bbox.x1 as f64, bbox.y1 as f64 - 5.0);
+                    cr.show_text(&label).expect("Failed to show text");
+                }
+            }
+
+            None
+        });
+    }
+
     pub fn start(&mut self) -> Result<()> {
         let should_stop = self.should_stop.clone();
 
@@ -232,6 +274,9 @@ impl FilePipeline {
 
         let original_w = self.original_w.clone();
         let original_h = self.original_h.clone();
+        let bounding_box = self.bounding_box.clone();
+
+        self.bounding_box_draw();
 
         self.app_sink.set_callbacks(
             AppSinkCallbacks::builder()
@@ -245,7 +290,10 @@ impl FilePipeline {
                     let frame = gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info)
                         .map_err(|_| gst::FlowError::Error)?;
 
-                    if let Err(err) = processor(&frame, &original_w, &original_h) {
+                    let bounding_box_clone = bounding_box.clone();
+                    if let Err(err) =
+                        processor(&frame, bounding_box_clone, &original_w, &original_h)
+                    {
                         // TODO: add to log
                         eprintln!("Error processing frame: {:?}", err);
                     }

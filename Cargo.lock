@@ -3822,10 +3822,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cairo-rs",
+ "detection",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-pbutils",
  "gstreamer-video",
+ "parking_lot",
 ]
 
 [[package]]

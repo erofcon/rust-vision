@@ -19,27 +19,21 @@ async fn main() -> Result<()> {
     // Initialize GStreamer
     gst::init()?;
 
-    // Load configuration
     let config = ProjectConfig::load()?;
 
-
-    // Load detection model once
     let model = Arc::new(Model::new(&config.base_detection_model.path)?);
     println!(
         "Loaded detection model from {}",
         config.base_detection_model.path
     );
 
-    // Initialize database
     let db = Database::new(&config.database.connection_string()).await?;
     db.ping().await?;
     let db_pool = db.get_pool().clone();
 
-    // Initialize message queue
     let mq = MQ::new(&config.mq.connection_to_string()).await?;
     let mq_channel = mq.get_channel().clone();
 
-    // Video repository
     let video_repo = Arc::new(VideoRepository::new(db_pool.clone()));
 
     let (in_w, in_h) = (
@@ -47,13 +41,11 @@ async fn main() -> Result<()> {
         config.base_detection_model.input_height,
     );
 
-    // Build shared frame processor
-    let frame_processor = frame_processor::build_frame_processor(Arc::clone(&model), &in_w, &in_h);
+    let frame_processor = frame_processor::build_frame_processor(Arc::clone(&model), in_w, in_h);
 
     println!("Spawning {} worker(s)...", config.worker.worker_count);
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
-    // Spawn workers
     for id in 0..config.worker.worker_count {
         let mut shutdown_rx = shutdown_tx.subscribe();
         let repo = Arc::clone(&video_repo);

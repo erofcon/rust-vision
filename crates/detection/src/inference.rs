@@ -1,5 +1,6 @@
 use crate::utils::{BoundingBox, intersection, union};
 use anyhow::Result;
+use gst_video::video_frame::Readable;
 use gst_video::{VideoFrame, VideoFrameExt};
 use ndarray::{Array, Axis, IxDyn, s};
 use ort::inputs;
@@ -8,7 +9,7 @@ use rayon::prelude::*;
 
 pub fn run(
     session: &Session,
-    frame: &VideoFrame<gst_video::video_frame::Readable>,
+    frame: &VideoFrame<Readable>,
     original_img_width: i32,
     original_img_height: i32,
     model_input_width: i32,
