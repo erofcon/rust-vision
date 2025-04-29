@@ -10,3 +10,5 @@ gst-video = { package = "gstreamer-video", version = "0.23.5" }
 gst-pbutils = { package = "gstreamer-pbutils", version = "0.23.5" }
 cairo-rs = { version = "0.20.7" }
 anyhow = "1.0"
+parking_lot = "0.12.3"
+detection = {path = "../detection"}

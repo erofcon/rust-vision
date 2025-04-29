@@ -1,7 +1,9 @@
 use crate::utils::QueueType;
 use anyhow::{Context, Result};
 use futures_util::StreamExt;
-use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicQosOptions, QueueDeclareOptions};
+use lapin::options::{
+    BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicQosOptions, QueueDeclareOptions,
+};
 use lapin::types::{FieldTable, ShortString};
 use lapin::Channel;
 use std::future::Future;
@@ -20,7 +22,6 @@ pub struct Consumer {
 
 impl Consumer {
     pub async fn new(channel: Channel, queue_type: QueueType) -> Result<Self> {
-
         channel.basic_qos(1, BasicQosOptions::default()).await?;
 
         channel

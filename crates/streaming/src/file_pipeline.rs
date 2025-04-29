@@ -1,4 +1,7 @@
+use crate::discover;
+use crate::utils::FrameProcessor;
 use anyhow::{Result, anyhow};
+use detection::utils::BoundingBox;
 use gst::prelude::{
     Cast, ElementExt, ElementExtManual, GObjectExtManualGst, GstBinExtManual, ObjectExt, PadExt,
 };
@@ -7,15 +10,18 @@ use gst_app::{AppSink, AppSinkCallbacks};
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct FilePipeline {
     pipeline: Pipeline,
     app_sink: AppSink,
-    frame_processor:
-        Option<Arc<dyn Fn(&VideoFrame<Readable>) -> Result<()> + Send + Sync + 'static>>,
+    original_w: i32,
+    original_h: i32,
+    overlay: Element,
+    frame_processor: Option<Arc<FrameProcessor>>,
+    bounding_box: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
     should_stop: Arc<AtomicBool>,
 }
 
@@ -26,7 +32,10 @@ impl FilePipeline {
         scale_height: i32,
         rtmp_url: &str,
     ) -> Result<Self> {
+        println!("Initializing FilePipeline, {}", file_path);
         let pipeline = Pipeline::new();
+
+        let file_info = discover::discover(&file_path)?;
 
         let source = Self::create_file_source(file_path)?;
         let elements = [
@@ -67,14 +76,26 @@ impl FilePipeline {
         Ok(FilePipeline {
             pipeline,
             app_sink,
+            original_w: file_info.width,
+            original_h: file_info.height,
+            overlay: cairooverlay,
             frame_processor: None,
+            bounding_box: Arc::new(Mutex::new(vec![])),
             should_stop: Arc::new(AtomicBool::new(false)),
         })
     }
 
     pub fn set_frame_processor<F>(&mut self, f: F)
     where
-        F: Fn(&VideoFrame<Readable>) -> Result<()> + Send + Sync + 'static,
+        F: Fn(
+                &VideoFrame<Readable>,
+                Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+                &i32,
+                &i32,
+            ) -> Result<()>
+            + Send
+            + Sync
+            + 'static,
     {
         self.frame_processor = Some(Arc::new(f));
     }
@@ -86,6 +107,10 @@ impl FilePipeline {
         let queue = ElementFactory::make("queue")
             .name("queue_process")
             .build()?;
+
+        queue.set_property("max-size-buffers", 1u32);
+        queue.set_property("max-size-time", 0u64);
+
         let scale = ElementFactory::make("videoscale").build()?;
 
         let caps_filter = gst::ElementFactory::make("capsfilter").build()?;
@@ -105,10 +130,18 @@ impl FilePipeline {
 
     fn create_display_branch() -> Result<Vec<Element>> {
         // TODO: removed in production
+        let queue = ElementFactory::make("queue")
+            .name("queue_display")
+            .build()?;
+
+        queue.set_property("max-size-buffers", 1u32);
+        queue.set_property("max-size-time", 0u64);
+
         Ok(vec![
-            ElementFactory::make("queue")
-                .name("queue_display")
-                .build()?,
+            // ElementFactory::make("queue")
+            //     .name("queue_display")
+            //     .build()?,
+            queue,
             ElementFactory::make("videoconvert").build()?,
             ElementFactory::make("autovideosink").build()?,
         ])
@@ -116,7 +149,10 @@ impl FilePipeline {
 
     fn create_rtmp_branch(rtmp_url: &str) -> Result<Vec<gst::Element>> {
         let queue = ElementFactory::make("queue").name("queue_rtmp").build()?;
-        queue.set_property("max-size-buffers", 1000u32);
+        // queue.set_property("max-size-buffers", 1000u32);
+        // queue.set_property("max-size-buffers", 1u32);
+        // queue.set_property("max-size-time", 0u64);
+        // queue.set_property_from_str("leaky", "downstream");
 
         let convert = ElementFactory::make("videoconvert").build()?;
 
@@ -214,6 +250,35 @@ impl FilePipeline {
         Ok(())
     }
 
+    fn bounding_box_draw(&self) {
+        let bounding_box = self.bounding_box.clone();
+
+        self.overlay.connect("draw", false, move |args| {
+            if let Ok(bounding_box) = bounding_box.lock() {
+                let cr = args[1].get::<&cairo::Context>().unwrap();
+                for (bbox, _, confidence) in bounding_box.iter() {
+                    //set color
+                    cr.set_source_rgb(1.0, 0.0, 0.0);
+                    cr.set_line_width(2.0);
+
+                    cr.rectangle(
+                        bbox.x1 as f64,
+                        bbox.y1 as f64,
+                        (bbox.x2 - bbox.x1) as f64,
+                        (bbox.y2 - bbox.y1) as f64,
+                    );
+
+                    cr.stroke().expect("Failed to stroke");
+                    let label = format!("{:.2}", confidence);
+                    cr.move_to(bbox.x1 as f64, bbox.y1 as f64 - 5.0);
+                    cr.show_text(&label).expect("Failed to show text");
+                }
+            }
+
+            None
+        });
+    }
+
     pub fn start(&mut self) -> Result<()> {
         let should_stop = self.should_stop.clone();
 
@@ -221,6 +286,12 @@ impl FilePipeline {
             .frame_processor
             .clone()
             .ok_or_else(|| anyhow!("Frame processor not set"))?;
+
+        let original_w = self.original_w.clone();
+        let original_h = self.original_h.clone();
+        let bounding_box = self.bounding_box.clone();
+
+        self.bounding_box_draw();
 
         self.app_sink.set_callbacks(
             AppSinkCallbacks::builder()
@@ -234,7 +305,10 @@ impl FilePipeline {
                     let frame = gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info)
                         .map_err(|_| gst::FlowError::Error)?;
 
-                    if let Err(err) = processor(&frame) {
+                    let bounding_box_clone = bounding_box.clone();
+                    if let Err(err) =
+                        processor(&frame, bounding_box_clone, &original_w, &original_h)
+                    {
                         // TODO: add to log
                         eprintln!("Error processing frame: {:?}", err);
                     }
@@ -310,7 +384,7 @@ impl FilePipeline {
             std::thread::sleep(Duration::from_millis(50));
         }
 
-        println!("Принудительная остановка pipeline");
+        println!("Stopping pipeline");
         self.pipeline.set_state(gst::State::Null)?;
 
         Ok(())
