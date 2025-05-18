@@ -1,19 +1,78 @@
-use gst_video::VideoFrame;
+use anyhow::{Result, anyhow};
 use gst_video::video_frame::Readable;
+use gst_video::{VideoFrame, VideoFrameExt};
+use opencv::core::{AlgorithmHint, CV_8UC3, CV_8UC4, Mat, Vector};
+use opencv::imgcodecs;
+use std::ffi::c_void;
 
 enum DetectionMode {
-    PersonDetection,
+    ObjectsDetection,
     MotionDetection,
 }
 
-fn detect_persons(_frame: &VideoFrame<Readable>) -> bool {
-    false
-    // unimplemented!("Call to your person detection implementation")
+fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
+    let width = frame.width() as i32;
+    let height = frame.height() as i32;
+    let format = frame.format();
+
+    let data = frame
+        .plane_data(0)
+        .map_err(|e| anyhow!("Failed to get plane data: {:?}", e))?;
+
+    let mat = match format {
+        gst_video::VideoFormat::Bgra => unsafe {
+            let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
+                height,
+                width,
+                CV_8UC4,
+                data.as_ptr() as *mut _,
+            )?;
+            mat.clone()
+        },
+        gst_video::VideoFormat::Rgb => unsafe {
+            let mat = Mat::new_rows_cols_with_data_unsafe_def(
+                height,
+                width,
+                CV_8UC3,
+                data.as_ptr() as *mut _,
+            )?;
+
+            let mut bgr_mat = Mat::default();
+            opencv::imgproc::cvt_color(
+                &mat,
+                &mut bgr_mat,
+                opencv::imgproc::COLOR_RGB2BGR,
+                0,
+                AlgorithmHint::ALGO_HINT_DEFAULT,
+            )?;
+            bgr_mat
+        },
+        gst_video::VideoFormat::Bgr => unsafe {
+            let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
+                height,
+                width,
+                CV_8UC3,
+                data.as_ptr() as *mut _,
+            )?;
+            mat.clone()
+        },
+        _ => {
+            return Err(anyhow!("Unsupported video format: {:?}", format));
+        }
+    };
+
+    Ok(mat)
 }
 
-fn detect_motion(_frame: &VideoFrame<Readable>) -> bool {
-    false
-    // unimplemented!("Call to your motion detection implementation")
+fn detect_objects(_frame: &VideoFrame<Readable>) -> Result<bool> {
+    Ok(false)
+}
+
+fn detect_motion(frame: &VideoFrame<Readable>) -> Result<bool> {
+    let mat = video_frame_to_mat(frame)?;
+
+
+    Ok(false)
 }
 
 pub struct DetectionState {
@@ -25,20 +84,20 @@ pub struct DetectionState {
 impl DetectionState {
     pub fn new(max_empty_frames: usize) -> Self {
         Self {
-            mode: DetectionMode::PersonDetection, // Start with person detection
+            mode: DetectionMode::ObjectsDetection, // Start with person detection
             frames_without_detection: 0,
             max_empty_frames,
         }
     }
 
-    pub fn process_frame(&mut self, frame: &VideoFrame<Readable>) -> bool {
+    pub fn process_frame(&mut self, frame: &VideoFrame<Readable>) -> Result<bool> {
         match self.mode {
-            DetectionMode::PersonDetection => {
-                let detected = detect_persons(frame);
+            DetectionMode::ObjectsDetection => {
+                let detected = detect_objects(frame)?;
 
                 if detected {
                     self.frames_without_detection = 0;
-                    true
+                    Ok(true)
                 } else {
                     self.frames_without_detection += 1;
 
@@ -51,23 +110,24 @@ impl DetectionState {
                         self.mode = DetectionMode::MotionDetection;
                         self.frames_without_detection = 0;
                     }
-                    false
+                    Ok(false)
                 }
             }
             DetectionMode::MotionDetection => {
                 println!("Motion detection");
-                let motion_detected = detect_motion(frame);
+                let motion_detected = detect_motion(frame)?;
 
                 if motion_detected {
                     // TODO: add to log
                     // If motion detected, switch back to person detection
                     println!("Motion detected! Switching back to person detection");
-                    self.mode = DetectionMode::PersonDetection;
+                    self.mode = DetectionMode::ObjectsDetection;
                     self.frames_without_detection = 0;
 
-                    return detect_persons(frame);
+                    return detect_objects(frame);
                 }
-                false
+
+                Ok(false)
             }
         }
     }

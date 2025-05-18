@@ -6,16 +6,20 @@ use gst_video::video_frame::Readable;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-
-fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionState>>) {
+fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionState>>) -> Result<()> {
     if let Ok(mut state_guard) = state.lock() {
-        let detection_result = state_guard.process_frame(buffer);
+        let detection_result = state_guard.process_frame(buffer)?;
 
-        if detection_result {
-            println!("Detection successful!");
-        }
+        Ok(())
+
+        // if detection_result {
+        //     println!("Detection successful!");
+        //     Ok(())
+        // }
     } else {
         eprintln!("Failed to lock detection state mutex");
+
+        Ok(())
     }
 }
 

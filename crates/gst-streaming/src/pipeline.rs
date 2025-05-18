@@ -36,7 +36,7 @@ impl GstPipeline {
         let process_videoscale = ElementFactory::make("videoscale").build()?;
 
         let caps = Caps::builder(glib::gstr!("video/x-raw"))
-            .field("format", gst_video::VideoFormat::Rgb.to_str())
+            .field("format", gst_video::VideoFormat::Bgr.to_str())
             .field("width", 640)
             .field("height", 640)
             .build();

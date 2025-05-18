@@ -1029,6 +1029,8 @@ dependencies = [
  "config",
  "gstreamer-video",
  "lazy_static",
+ "motion",
+ "opencv",
  "serde",
  "tokio",
  "uuid",
@@ -2746,6 +2748,14 @@ dependencies = [
  "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "motion"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "opencv",
 ]
 
 [[package]]
