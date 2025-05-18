@@ -1,11 +1,23 @@
 use anyhow::{Result, anyhow};
-use gst::{Buffer, Caps};
+use common::detection_state::DetectionState;
 use gst_streaming::pipeline::GstPipeline;
+use gst_video::VideoFrame;
+use gst_video::video_frame::Readable;
 use std::path::Path;
-use std::thread::sleep;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
-fn process_buffer(buffer: &Buffer, caps: &Caps) {}
+
+fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionState>>) {
+    if let Ok(mut state_guard) = state.lock() {
+        let detection_result = state_guard.process_frame(buffer);
+
+        if detection_result {
+            println!("Detection successful!");
+        }
+    } else {
+        eprintln!("Failed to lock detection state mutex");
+    }
+}
 
 fn main() -> Result<()> {
     // unsafe {
@@ -23,8 +35,12 @@ fn main() -> Result<()> {
 
     let rtmp_url = "rtmp://localhost/live/stream_1";
 
-    let mut pipeline = GstPipeline::new(path, rtmp_url, move |buffer, caps| {
-        process_buffer(buffer, caps);
+    let detection_state = Arc::new(Mutex::new(DetectionState::new(120)));
+
+    let detection_state_clone = detection_state.clone();
+
+    let mut pipeline = GstPipeline::new(path, rtmp_url, move |buffer| {
+        process_buffer(buffer, &detection_state_clone);
     })?;
 
     pipeline.run()?;

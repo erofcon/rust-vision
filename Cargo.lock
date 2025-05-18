@@ -1027,6 +1027,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "config",
+ "gstreamer-video",
  "lazy_static",
  "serde",
  "tokio",
@@ -1859,6 +1860,7 @@ name = "gst-streaming"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "common",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-pbutils",

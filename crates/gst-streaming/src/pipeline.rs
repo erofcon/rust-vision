@@ -10,6 +10,8 @@ use gst::{
     Bin, Buffer, Caps, Element, ElementFactory, MessageView, PadProbeData, PadProbeReturn,
     PadProbeType, Pipeline, SeekFlags, SeekType, element_warning, glib,
 };
+use gst_video::VideoFrame;
+use gst_video::video_frame::Readable;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -22,7 +24,7 @@ impl GstPipeline {
     pub fn new(
         file_path: &str,
         rtmp_url: &str,
-        buffer_processor: impl Fn(&mut Buffer, &Caps) + Send + Sync + 'static,
+        buffer_processor: impl Fn(&VideoFrame<Readable>) + Send + Sync + 'static,
     ) -> Result<Self> {
         let pipeline = Pipeline::new();
 
@@ -52,7 +54,15 @@ impl GstPipeline {
             if let Some(PadProbeData::Buffer(buffer)) = &mut pad_probe_info.data {
                 let caps = &pad.current_caps().expect("Pad has no caps!");
 
-                buffer_processor(buffer, caps);
+                let info = gst_video::VideoInfo::from_caps(caps)
+                    .map_err(|_| gst::FlowError::Error)
+                    .unwrap();
+
+                let frame = gst_video::VideoFrame::from_buffer_readable(buffer.copy(), &info)
+                    .map_err(|_| gst::FlowError::Error)
+                    .unwrap();
+
+                buffer_processor(&frame);
             }
 
             PadProbeReturn::Ok
@@ -97,9 +107,7 @@ impl GstPipeline {
         Element::link_many(&rtmp_branch)?;
         Self::connect_tee_branch(&tee, &rtmp_branch[0], "rtmp")?;
 
-        Ok(GstPipeline {
-            pipeline,
-        })
+        Ok(GstPipeline { pipeline })
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -113,13 +121,20 @@ impl GstPipeline {
                     println!("EOS message received, finishing processing");
                     break;
                 }
-
                 MessageView::Error(err) => {
                     let error = err.error();
                     let debug = err.debug();
                     println!("Error: {}, debug: {:?}", error, debug);
                     return Err(anyhow!("GStreamer error: {}", error));
                 }
+                MessageView::StateChanged(state) => {
+                    if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
+                        let old = state.old();
+                        let new = state.current();
+                        println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
+                    }
+                }
+                _ => {}
                 _ => (),
             }
         }

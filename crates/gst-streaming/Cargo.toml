@@ -9,3 +9,4 @@ gst.workspace = true
 gst-app.workspace = true
 gst-video.workspace = true
 gst-pbutils.workspace = true
+common.workspace = true
