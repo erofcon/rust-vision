@@ -108,8 +108,12 @@ impl FilePipeline {
             .name("queue_process")
             .build()?;
 
-        queue.set_property("max-size-buffers", 1u32);
-        queue.set_property("max-size-time", 0u64);
+        queue.set_property("max-size-buffers", 5u32);
+        queue.set_property("max-size-time", 500_000_000u64);
+        queue.set_property_from_str("leaky", "downstream");
+
+        // queue.set_property("max-size-buffers", 1u32);
+        // queue.set_property("max-size-time", 0u64);
 
         let scale = ElementFactory::make("videoscale").build()?;
 
@@ -119,7 +123,7 @@ impl FilePipeline {
             .field("width", scale_width)
             .field("height", scale_height)
             .build();
-        caps_filter.set_property("caps", &caps);
+                    caps_filter.set_property("caps", &caps);
 
         let app_sink = AppSink::builder().drop(true).max_buffers(1).build();
         app_sink.set_property("emit-signals", true);
@@ -134,8 +138,11 @@ impl FilePipeline {
             .name("queue_display")
             .build()?;
 
-        queue.set_property("max-size-buffers", 1u32);
-        queue.set_property("max-size-time", 0u64);
+        queue.set_property("max-size-buffers", 30u32);
+        queue.set_property("max-size-time", 3_000_000_000u64);
+
+        // queue.set_property("max-size-buffers", 1u32);
+        // queue.set_property("max-size-time", 0u64);
 
         Ok(vec![
             // ElementFactory::make("queue")
@@ -149,6 +156,10 @@ impl FilePipeline {
 
     fn create_rtmp_branch(rtmp_url: &str) -> Result<Vec<gst::Element>> {
         let queue = ElementFactory::make("queue").name("queue_rtmp").build()?;
+
+        queue.set_property("max-size-buffers", 90u32);
+        queue.set_property("max-size-time", 5_000_000_000u64);
+
         // queue.set_property("max-size-buffers", 1000u32);
         // queue.set_property("max-size-buffers", 1u32);
         // queue.set_property("max-size-time", 0u64);
@@ -186,9 +197,12 @@ impl FilePipeline {
 
         let decode_bin = ElementFactory::make("decodebin").build()?;
 
+        let videorate = ElementFactory::make("videorate").build()?;
+        videorate.set_property("drop-only", true);
+
         let queue = ElementFactory::make("queue").build()?;
 
-        bin.add_many([&src, &decode_bin, &queue])?;
+        bin.add_many([&src, &decode_bin, &videorate, &queue])?;
         Element::link_many([&src, &decode_bin])?;
 
         let queue_src = queue.static_pad("src").unwrap();

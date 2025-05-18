@@ -6,6 +6,9 @@ use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
 use std::sync::{Arc, Mutex};
 use streaming::utils::FrameProcessor;
+use std::thread::sleep;
+use std::time::Duration;
+
 
 pub fn build_frame_processor(
     model: Arc<Model>,
@@ -20,6 +23,9 @@ pub fn build_frame_processor(
               original_w: &i32,
               original_h: &i32|
               -> Result<()> {
+
+            sleep(Duration::from_millis(100));
+
             let result = run(
                 model.get_session(),
                 frame,

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
 gst-video = { package = "gstreamer-video", version = "0.23.5" }
+opencv = "0.94.4"
 ndarray = { version = "0.16.1", features = ["rayon"] }
 anyhow = "1.0"
 rayon = "1.10.0"

@@ -17,6 +17,13 @@ mod handler;
 #[actix_web::main]
 async fn main() -> Result<()> {
     // Initialize GStreamer
+    // TODO: delete to production
+
+    unsafe {
+        std::env::set_var("GST_DEBUG", "3");
+        std::env::set_var("RUST_BACKTRACE", "full");
+    }
+
     gst::init()?;
 
     let config = ProjectConfig::load()?;

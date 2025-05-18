@@ -9,7 +9,6 @@ The system uses Gstreamer and ORT packages for video capture and analytics.
 
 [API Documentation](./docs/api.md)
 
-
 ### The structure of the project
 
 ```
@@ -124,4 +123,32 @@ rust-vision/
     └── integration_tests.rs
 ```
 
+Hi!
 
+I'm trying to launch a video from the extension.dav is like this:
+
+````
+gst-launch-1.0 filesrc location=2.dav ! decodebin ! autovideosink
+````
+
+I apologize, I indicated the error incorrectly. It displays such an error:
+
+````
+Use Windows high-resolution clock, precision: 1 ms
+Setting pipeline to PAUSED ...
+Pipeline is PREROLLING ...
+Got context from element 'autovideosink0': gst.d3d11.device.handle=context, device=(GstD3D11Device)"\(GstD3D11Device\)\ d3d11device3", adapter=(uint)0, adapter-luid=(gint64)56838, device-id=(uint)5686, vendor-id=(uint)4098, hardware=(boolean)true, description=(string)"AMD\ Radeon\(TM\)\ Graphics";
+ERROR: from element /GstPipeline:pipeline0/GstDecodeBin:decodebin0/GstMpeg4VParse:mpeg4vparse0: No valid frames found before end of stream
+Additional debug info:
+../libs/gst/base/gstbaseparse.c(3676): gst_base_parse_loop (): /GstPipeline:pipeline0/GstDecodeBin:decodebin0/GstMpeg4VParse:mpeg4vparse0
+ERROR: pipeline doesn't want to preroll.
+Setting pipeline to NULL ...
+Freeing pipeline ...
+````
+
+I found information on the web about the format .doc is a proprietary container used mainly by dashcam recorders and
+video surveillance systems from Dahua and some other manufacturers. This format differs from standard multimedia
+containers (e.g. AVI, MP4), and supports .dav is missing from many popular media players and multimedia frameworks,
+including GStreamer.
+
+Please tell me if this is the case and is there a way to run such videos without first converting?

@@ -4,3 +4,11 @@ migrate-path = "migrations"
 
 resolver = "2"
 
+[workspace.dependencies]
+anyhow = "1.0.98"
+gst = { package = "gstreamer", version = "0.23.5" }
+gst-app = { package = "gstreamer-app", version = "0.23.5" }
+gst-video = { package = "gstreamer-video", version = "0.23.5" }
+gst-pbutils = { package = "gstreamer-pbutils", version = "0.23.5" }
+
+

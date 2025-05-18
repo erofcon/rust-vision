@@ -1,0 +1,11 @@
+[package]
+name = "gst-streaming"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+gst.workspace = true
+gst-app.workspace = true
+gst-video.workspace = true
+gst-pbutils.workspace = true
