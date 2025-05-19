@@ -19,7 +19,7 @@ fn main() -> Result<()> {
 
     let mut cap = videoio::VideoCapture::from_file(video_path, 0)?;
     if !cap.is_opened()? {
-        eprintln!("Не удалось открыть видеозахват");
+        eprintln!("Error cap video");
         return Ok(());
     }
 
@@ -79,14 +79,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
-/*
-let fps = 30; // базовая частота кадров
-       let adjusted_fps = (fps as f64 * 2.0) as i32;
-       let rate_caps = gst::Caps::builder("video/x-raw")
-           .field("framerate", gst::Fraction::new(adjusted_fps, 1))
-           .build();
-
-       let rate_filter = ElementFactory::make_with_name("capsfilter", Some("speed-capsfilter"))?;
-       rate_filter.set_property("caps", &rate_caps);
-*/

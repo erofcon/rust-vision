@@ -1027,6 +1027,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "config",
+ "detection",
  "gstreamer-video",
  "lazy_static",
  "motion",
@@ -1863,10 +1864,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "common",
+ "detection",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-pbutils",
  "gstreamer-video",
+ "motion",
 ]
 
 [[package]]
