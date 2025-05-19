@@ -3,6 +3,8 @@ use common::detection_state::DetectionState;
 use gst_streaming::pipeline::GstPipeline;
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
+use motion::motion::Motion;
+use detection::model::Model;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -11,11 +13,6 @@ fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionStat
         let detection_result = state_guard.process_frame(buffer)?;
 
         Ok(())
-
-        // if detection_result {
-        //     println!("Detection successful!");
-        //     Ok(())
-        // }
     } else {
         eprintln!("Failed to lock detection state mutex");
 
@@ -39,12 +36,16 @@ fn main() -> Result<()> {
 
     let rtmp_url = "rtmp://localhost/live/stream_1";
 
-    let detection_state = Arc::new(Mutex::new(DetectionState::new(120)));
+    let motion = Arc::new(Mutex::new(Motion::new()?));
+    let model = Arc::new(Mutex::new(Model::new("models/yolo11s.onnx")?));
+
+    let detection_state = Arc::new(Mutex::new(DetectionState::new(motion, model,120, 30)));
 
     let detection_state_clone = detection_state.clone();
+    // let motion_clone = motion.clone();
 
     let mut pipeline = GstPipeline::new(path, rtmp_url, move |buffer| {
-        process_buffer(buffer, &detection_state_clone);
+        process_buffer(buffer, &detection_state_clone).unwrap();
     })?;
 
     pipeline.run()?;
