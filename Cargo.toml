@@ -11,6 +11,9 @@ gst-app = { package = "gstreamer-app", version = "0.23.5" }
 gst-video = { package = "gstreamer-video", version = "0.23.5" }
 gst-pbutils = { package = "gstreamer-pbutils", version = "0.23.5" }
 opencv = "0.94.4"
+parking_lot = "0.12.3"
+rayon = "1.10.0"
 common = { path = "crates/common" }
 motion = { path = "crates/motion" }
-detection = {path = "crates/detection"}
+detection = { path = "crates/detection" }
+ndarray = { version = "0.16.1", features = ["rayon"] }

@@ -1362,6 +1362,7 @@ dependencies = [
  "ndarray",
  "opencv",
  "ort",
+ "parking_lot",
  "rayon",
 ]
 
