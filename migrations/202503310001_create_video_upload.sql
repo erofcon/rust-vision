@@ -1,4 +1,4 @@
--- 20250331_001_create_video_upload.sql
+-- 202503310001_create_video_upload.sql
 CREATE TYPE video_status AS ENUM ('uploaded', 'waiting', 'processing', 'completed', 'failed');
 
 

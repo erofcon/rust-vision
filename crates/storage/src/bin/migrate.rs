@@ -6,6 +6,10 @@ use storage::database::Database;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    unsafe {
+        std::env::set_var("RUST_BACKTRACE", "full");
+    }
+
     let config = ProjectConfig::load()?;
 
     let migrations_path = Path::new(&config.database.migrations_path);
