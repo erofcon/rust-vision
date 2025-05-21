@@ -6,6 +6,10 @@ resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0.98"
+actix-web = "4.11.0"
+actix-multipart = "0.7.2"
+serde = { version = "1.0.219", features = ["derive"] }
+sqlx = "0.8.3"
 gst = { package = "gstreamer", version = "0.23.5" }
 gst-app = { package = "gstreamer-app", version = "0.23.5" }
 gst-video = { package = "gstreamer-video", version = "0.23.5" }
@@ -17,3 +21,4 @@ common = { path = "crates/common" }
 motion = { path = "crates/motion" }
 detection = { path = "crates/detection" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
+uuid = { version = "1.16.0", features = ["v4"] }
