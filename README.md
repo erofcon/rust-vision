@@ -9,7 +9,6 @@ The system uses Gstreamer and ORT packages for video capture and analytics.
 
 [API Documentation](./docs/api.md)
 
-
 ### The structure of the project
 
 ```
@@ -124,4 +123,4 @@ rust-vision/
     └── integration_tests.rs
 ```
 
-
+ 

@@ -3,9 +3,11 @@ use anyhow::Result;
 use gst_video::video_frame::Readable;
 use gst_video::{VideoFrame, VideoFrameExt};
 use ndarray::{Array, Axis, IxDyn, s};
+use opencv::prelude::{MatTraitConst, MatTraitConstManual};
 use ort::inputs;
 use ort::session::Session;
 use rayon::prelude::*;
+use std::time::Instant;
 
 pub fn run(
     session: &Session,
@@ -16,8 +18,13 @@ pub fn run(
     model_input_height: i32,
     out_classes: Option<&[usize]>,
 ) -> Result<Vec<(BoundingBox, usize, f32)>> {
+    let start_time = Instant::now();
+
     let image = prepare_image(frame)?;
 
+    let duration = start_time.elapsed();
+
+    println!("{:?}", duration);
     let input = inputs!["images"=>image]?;
 
     let output = {
@@ -101,9 +108,9 @@ fn process_output(
     Ok(selected)
 }
 
-fn prepare_image(
-    frame: &VideoFrame<gst_video::video_frame::Readable>,
-) -> Result<Array<f32, ndarray::Dim<[usize; 4]>>> {
+fn prepare_image(frame: &VideoFrame<Readable>) -> Result<Array<f32, ndarray::Dim<[usize; 4]>>> {
+    // let start_time = Instant::now();
+
     let frame_width = frame.width() as usize;
     let frame_height = frame.height() as usize;
     let channel_size = frame_width * frame_height;
@@ -138,5 +145,10 @@ fn prepare_image(
         });
 
     let input = Array::from_shape_vec((1, 3, frame_height, frame_width), flat_data)?;
+
+    // let duration = start_time.elapsed();
+    //
+    // println!("{:?}", duration);
+
     Ok(input)
 }
