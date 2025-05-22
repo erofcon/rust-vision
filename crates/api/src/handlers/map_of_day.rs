@@ -4,7 +4,7 @@ use crate::helper::read_field_data;
 use actix_multipart::Multipart;
 use actix_web::{post, web, HttpResponse, Responder};
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
 use sqlx::{Pool, Postgres};
 use storage::models::map_of_day::{AccessLog, EventStatus, MapOfDay};

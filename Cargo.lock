@@ -4280,6 +4280,7 @@ dependencies = [
  "chrono",
  "common",
  "serde",
+ "serde_json",
  "sqlx",
  "tokio",
  "uuid",

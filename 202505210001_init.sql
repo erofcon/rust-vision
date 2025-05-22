@@ -29,10 +29,10 @@ CREATE TABLE access_log
 (
     id            UUID PRIMARY KEY,
     full_name     VARCHAR(512),
-    event_time    TIMESTAMP WITH TIME ZONE    NOT NULL,
-    event         event_status NOT NULL,
-    card_id       VARCHAR(512) NOT NULL,
-    map_of_day_id UUID         NOT NULL,
+    event_time    TIMESTAMP WITH TIME ZONE NOT NULL,
+    event         event_status             NOT NULL,
+    card_id       VARCHAR(512)             NOT NULL,
+    map_of_day_id UUID                     NOT NULL,
 
     CONSTRAINT fk_access_log_map_of_day
         FOREIGN KEY (map_of_day_id)
