@@ -15,10 +15,10 @@ async fn create_organization(
 
     let result = org_repo.create_organization(item.into_inner()).await?;
 
-    Ok(HttpResponse::Ok().json(result))
+    Ok(HttpResponse::Created().json(result))
 }
 
-#[post("/api/v1/create/camera_preset/{org_id}")]
+#[post("/api/v1/create/{org_id}/camera_preset")]
 async fn create_camera_preset(
     pool: web::Data<Pool<Postgres>>,
     path: web::Path<Uuid>,
@@ -52,7 +52,7 @@ async fn create_camera_preset(
         .create_camera_preset(org.id, item.into_inner())
         .await?;
 
-    Ok(HttpResponse::Ok().json(result))
+    Ok(HttpResponse::Created().json(result))
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
