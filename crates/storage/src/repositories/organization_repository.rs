@@ -33,7 +33,7 @@ impl OrganizationRepository {
         Ok(result)
     }
 
-    pub async fn get_organization_by_id(&self, id: Uuid) -> Result<Option<Organization>> {
+    pub async fn get_organization_by_id(&self, id: &Uuid) -> Result<Option<Organization>> {
         let result = sqlx::query_as(r#"SELECT * FROM organizations WHERE id = $1"#)
             .bind(id)
             .fetch_optional(&self.pool)
@@ -45,7 +45,7 @@ impl OrganizationRepository {
 
     pub async fn create_camera_preset(
         &self,
-        organization_id: Uuid,
+        organization_id: &Uuid,
         camera: CreateCameraPreset,
     ) -> Result<CameraPreset> {
         let result = sqlx::query_as(
@@ -56,7 +56,7 @@ impl OrganizationRepository {
             "#,
         ).bind(
             &Uuid::new_v4(),
-        ).bind(&organization_id)
+        ).bind(organization_id)
             .bind(&camera.camera_name)
             .bind(&camera.location)
             .bind(&camera.detectors)
@@ -77,12 +77,25 @@ impl OrganizationRepository {
         Ok(result)
     }
 
-    pub async fn list_camera_presets(&self, organization_id: Uuid) -> Result<Vec<CameraPreset>> {
+    pub async fn list_camera_presets(&self, organization_id: &Uuid) -> Result<Vec<CameraPreset>> {
         let result = sqlx::query_as(r#"SELECT * FROM camera_presets WHERE organization_id = $1"#)
             .bind(organization_id)
             .fetch_all(&self.pool)
             .await
             .context("Error to fetch list of camera_presets")?;
+
+        Ok(result)
+    }
+
+    pub async fn get_camera_preset_by_name(&self, name: &String) -> Result<Option<CameraPreset>> {
+        let result = sqlx::query_as(
+            r#"
+           SELECT * FROM camera_presets WHERE camera_name = $1
+            "#,
+        )
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?;
 
         Ok(result)
     }

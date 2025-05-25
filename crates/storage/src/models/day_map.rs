@@ -13,6 +13,7 @@ pub struct DayMap {
 
 #[derive(Serialize, Deserialize)]
 pub struct CreateDayMap {
+    pub organization_id: Uuid,
     pub title: String,
     pub description: Option<String>,
 }

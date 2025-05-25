@@ -72,7 +72,8 @@ impl DayMapRepository {
         .bind(&card_ids)
         .bind(&entry_times)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .context("Error to create day_map_entries")?;
 
         Ok(result)
     }

@@ -18,10 +18,9 @@ async fn create_organization(
     Ok(HttpResponse::Created().json(result))
 }
 
-#[post("/api/v1/create/{org_id}/camera_preset")]
+#[post("/api/v1/create/camera_preset")]
 async fn create_camera_preset(
     pool: web::Data<Pool<Postgres>>,
-    path: web::Path<Uuid>,
     item: web::Json<CreateCameraPreset>,
 ) -> Result<impl Responder, ApiError> {
     /*
@@ -44,12 +43,12 @@ async fn create_camera_preset(
     let org_repo = OrganizationRepository::new(pool.get_ref().clone());
 
     let org = org_repo
-        .get_organization_by_id(path.into_inner())
+        .get_organization_by_id(&item.organization_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
     let result = org_repo
-        .create_camera_preset(org.id, item.into_inner())
+        .create_camera_preset(&org.id, item.into_inner())
         .await?;
 
     Ok(HttpResponse::Created().json(result))

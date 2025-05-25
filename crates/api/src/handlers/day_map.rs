@@ -10,16 +10,15 @@ use storage::repositories::day_map_repository::DayMapRepository;
 use storage::repositories::organization_repository::OrganizationRepository;
 use uuid::Uuid;
 
-#[post("/api/v1/create/{org_id}/day_map")]
+#[post("/api/v1/create/day_map")]
 async fn create_day_map(
     pool: web::Data<Pool<Postgres>>,
-    path: web::Path<Uuid>,
     item: web::Json<CreateDayMap>,
 ) -> Result<impl Responder, ApiError> {
     let org_repo = OrganizationRepository::new(pool.get_ref().clone());
 
     let org = org_repo
-        .get_organization_by_id(path.into_inner())
+        .get_organization_by_id(&item.organization_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -45,12 +44,12 @@ async fn create_day_map_entries(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    // while let Some(item) = payload.next().await {
-    //     // let mut field = item;
-    //     // while let Some(_chunk) = field.next().await {
-    //     //     // TODO: add xlsx pars
-    //     // }
-    // }
+    while let Some(item) = payload.next().await {
+        // let mut field = item;
+        // while let Some(_chunk) = field.next().await {
+        //     // TODO: add xlsx pars
+        // }
+    }
 
     let simulate_records = vec![
         CreateDayMapEntry {

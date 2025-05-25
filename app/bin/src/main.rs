@@ -2,7 +2,7 @@ use actix_cors::Cors;
 use actix_web::middleware::Logger;
 use actix_web::{App, HttpServer, web};
 use anyhow::Result;
-use api::handlers::{health, map_of_day, organization, publish, video, day_map};
+use api::handlers::{day_map, health, map_of_day, organization, processing_job, publish, video};
 use common::config::ProjectConfig;
 use detection::model::Model;
 use queue::connection::MQ;
@@ -100,6 +100,7 @@ async fn main() -> Result<()> {
             .configure(map_of_day::config)
             .configure(organization::config)
             .configure(day_map::config)
+            .configure(processing_job::config)
     })
     .bind(&bind_addr)?
     .run();

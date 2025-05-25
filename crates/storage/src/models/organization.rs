@@ -27,6 +27,7 @@ pub struct CameraPreset {
 
 #[derive(Serialize, Deserialize)]
 pub struct CreateCameraPreset {
+    pub organization_id: Uuid,
     pub camera_name: String,
     pub location: String,
     pub detectors: serde_json::Value, //  [ "face", "person" ]
