@@ -7,9 +7,56 @@ use queue::producer::Producer;
 use queue::utils::Payload;
 use queue::utils::QueueType;
 use sqlx::{Pool, Postgres};
+use storage::models::processing_job::ProcessingStatus;
 use storage::models::video::VideoStatus;
+use storage::repositories::processing_jobs_repository::ProcessingJobsRepository;
 use storage::repositories::video_repository::VideoRepository;
 use uuid::Uuid;
+
+#[post("/api/v1/process/publish/{id}")]
+async fn process_publish(
+    pool: web::Data<Pool<Postgres>>,
+    mq: web::Data<Channel>,
+    processing_job_id: web::Path<Uuid>,
+) -> Result<impl Responder, ApiError> {
+    let pool = pool.get_ref().clone();
+    let process = ProcessingJobsRepository::new(pool.clone());
+    let producer = Producer::new(mq.get_ref().clone()).context("Producer creation error")?;
+
+    let result = process
+        .get_processing_job_with_video_job(&processing_job_id)
+        .await?;
+
+    for video_job in &result.video_jobs {
+        match video_job.status {
+            ProcessingStatus::Uploaded
+            | ProcessingStatus::Failed
+            | ProcessingStatus::Cancelled
+            | ProcessingStatus::Completed => {
+                let payload = Payload { id: video_job.id };
+                let bytes = payload
+                    .serialize()
+                    .context("Failed to serialize payload")
+                    .map_err(ApiError::from)?;
+
+                producer
+                    .publish(&bytes, QueueType::VideoProcessing)
+                    .await
+                    .context("Error to publish producer")
+                    .map_err(ApiError::from)?;
+
+                // process
+                //     .update_video_job_status(&video_job.id, ProcessingStatus::Waiting)
+                //     .await?;
+            }
+            _ => {
+                // Не обновляем статус для других состояний (Waiting, Processing, Completed)
+            }
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(result))
+}
 
 #[post("/api/v1/video/pipeline/publish/{id}")]
 async fn publish_pipeline(
@@ -17,6 +64,8 @@ async fn publish_pipeline(
     mq: web::Data<Channel>,
     path: web::Path<Uuid>,
 ) -> Result<impl Responder, ApiError> {
+    // TODO: to delete
+
     let video_id = path.into_inner();
     let video_repo = VideoRepository::new(pool.get_ref().clone());
 
@@ -59,6 +108,8 @@ async fn pipeline_cancel(
     pool: web::Data<Pool<Postgres>>,
     path: web::Path<Uuid>,
 ) -> Result<impl Responder, ApiError> {
+    // TODO: to delete
+
     let video_id = path.into_inner();
     let video_repo = VideoRepository::new(pool.get_ref().clone());
 
@@ -89,6 +140,9 @@ async fn pipeline_cancel(
 
     Ok(HttpResponse::Ok())
 }
+
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(publish_pipeline).service(pipeline_cancel);
+    cfg.service(publish_pipeline)
+        .service(pipeline_cancel)
+        .service(process_publish);
 }

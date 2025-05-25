@@ -1,8 +1,11 @@
-use crate::models::processing_job::{CreateProcessingJob, ProcessingJob, ProcessingStatus};
+use crate::models::processing_job::{
+    CreateProcessingJob, ProcessingJob, ProcessingJobWithVideoJobResponse, ProcessingStatus,
+};
 use crate::models::video_job::{VideoJob, VideoJobCreate};
 use anyhow::{Context, Result};
-use chrono::Utc;
-use sqlx::{Pool, Postgres};
+use chrono::{DateTime, Utc};
+use serde_json::Value;
+use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
 
 pub struct ProcessingJobsRepository {
@@ -53,7 +56,93 @@ impl ProcessingJobsRepository {
             .bind(&video_job.start_time)
             .bind(&Utc::now())
             .fetch_one(&self.pool)
-            .await?;
+            .await.context("Error to create video_job")?;
+
+        Ok(result)
+    }
+
+    pub async fn get_processing_job_with_video_job(
+        &self,
+        processing_id: &Uuid,
+    ) -> Result<ProcessingJobWithVideoJobResponse> {
+        let row = sqlx::query(
+            r#"
+        SELECT
+            pj.id,
+            pj.organization_id,
+            pj.day_map_id,
+            pj.video_folder_path,
+            pj.status,
+            pj.created_at,
+            (
+                SELECT COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'id', vj.id,
+                            'processing_jobs_id', vj.processing_jobs_id,
+                            'camera_presets_id', vj.camera_presets_id,
+                            'video_name', vj.video_name,
+                            'file_path', vj.file_path,
+                            'status', vj.status::text,
+                            'start_time', vj.start_time,
+                            'created_at', vj.created_at
+                        )
+                    ),
+                    '[]'::json
+                )
+                FROM video_jobs vj
+                WHERE vj.processing_jobs_id = pj.id
+            ) as video_jobs_json
+        FROM processing_jobs pj
+        WHERE pj.id = $1
+        "#,
+        )
+        .bind(processing_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let id: Uuid = row.get("id");
+        let organization_id: Uuid = row.get("organization_id");
+        let day_map_id: Uuid = row.get("day_map_id");
+        let video_folder_path: String = row.get("video_folder_path");
+        let status: ProcessingStatus = row.get("status");
+        let created_at: DateTime<Utc> = row.get("created_at");
+
+        let video_jobs_json: Value = row.get("video_jobs_json");
+        let video_jobs: Vec<VideoJob> = serde_json::from_value(video_jobs_json)
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+
+        let result = ProcessingJobWithVideoJobResponse {
+            id,
+            organization_id,
+            day_map_id,
+            video_folder_path,
+            status,
+            created_at,
+            video_jobs,
+        };
+
+        Ok(result)
+    }
+
+    pub async fn update_video_jobs_status_conditionally(
+        &self,
+        processing_job_id: &Uuid,
+        new_status: ProcessingStatus,
+    ) -> Result<VideoJob> {
+        let result = sqlx::query_as(
+            r#"
+            UPDATE video_jobs
+            SET status = $1
+            WHERE processing_jobs_id = $2
+            AND status IN ('uploaded', 'failed', 'cancelled')
+            RETURNING *
+            "#,
+        )
+        .bind(new_status)
+        .bind(processing_job_id)
+        .fetch_one(&self.pool)
+        .await?;
 
         Ok(result)
     }
