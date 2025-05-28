@@ -745,11 +745,14 @@ dependencies = [
  "common",
  "detection",
  "futures",
+ "gst-streaming",
  "gstreamer",
  "gstreamer-video",
  "lapin",
+ "motion",
  "parking_lot",
  "queue",
+ "sqlx",
  "storage",
  "streaming",
  "tokio",
@@ -1868,10 +1871,10 @@ dependencies = [
  "common",
  "detection",
  "gstreamer",
- "gstreamer-app",
  "gstreamer-pbutils",
  "gstreamer-video",
  "motion",
+ "storage",
 ]
 
 [[package]]

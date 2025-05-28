@@ -8,6 +8,7 @@ use serde_json::Value;
 use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct ProcessingJobsRepository {
     pool: Pool<Postgres>,
 }
@@ -143,6 +144,16 @@ impl ProcessingJobsRepository {
         .bind(processing_job_id)
         .fetch_one(&self.pool)
         .await?;
+
+        Ok(result)
+    }
+
+    pub async fn get_video_job_by_id(&self, id: &Uuid) -> Result<VideoJob> {
+        let result = sqlx::query_as(r#"SELECT * FROM video_jobs WHERE id = $1"#)
+            .bind(&id)
+            .fetch_one(&self.pool)
+            .await
+            ?;
 
         Ok(result)
     }

@@ -8,14 +8,16 @@ anyhow.workspace = true
 actix-web.workspace = true
 actix-cors.workspace = true
 api.workspace = true
+detection.workspace = true
 futures.workspace = true
+gst-streaming.workspace = true
 tokio.workspace = true
 queue.workspace = true
 common.workspace = true
 storage.workspace = true
 lapin.workspace = true
-
-
+sqlx.workspace = true
+motion.workspace = true
 
 #refactor
 async-std = "1.13.1"
@@ -25,6 +27,5 @@ streaming = { path = "../../crates/streaming" }
 
 uuid = { version = "1.16.0", features = ["v4"] }
 actix-multipart = "0.7.2"
-detection = { path = "../../crates/detection" }
 parking_lot = "0.12.3"
 tracing = "0.1.41"

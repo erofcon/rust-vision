@@ -5,7 +5,7 @@ use gst_video::video_frame::Readable;
 use gst_video::{VideoFrame, VideoFrameExt};
 use motion::motion::Motion;
 use opencv::core::{AlgorithmHint, CV_8UC3, CV_8UC4, Mat};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 
 enum DetectionMode {
     ObjectsDetection,
@@ -66,7 +66,7 @@ fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
     Ok(mat)
 }
 
-fn detect_objects(frame: &VideoFrame<Readable>, model: MutexGuard<Model>) -> Result<bool> {
+fn detect_objects(frame: &VideoFrame<Readable>, model: RwLockReadGuard<Model>) -> Result<bool> {
     let result = run(model.get_session(), frame, 192, 180, 640, 640, Some(&[0]))?;
     println!("Detected objects: {:?}", result.len());
     println!("Detecting objects ...");
@@ -84,7 +84,7 @@ fn detect_motion(frame: &VideoFrame<Readable>, mut motion: MutexGuard<Motion>) -
 
 pub struct DetectionState {
     motion: Arc<Mutex<Motion>>,
-    model: Arc<Mutex<Model>>,
+    model: Arc<RwLock<Model>>,
     mode: DetectionMode,
     frames_without_detection: usize,
     frames_without_motion: usize,
@@ -95,7 +95,7 @@ pub struct DetectionState {
 impl DetectionState {
     pub fn new(
         motion: Arc<Mutex<Motion>>,
-        model: Arc<Mutex<Model>>,
+        model: Arc<RwLock<Model>>,
         detection_max_empty_frames: usize,
         motion_max_empty_frames: usize,
     ) -> Self {
@@ -113,7 +113,7 @@ impl DetectionState {
     pub fn process_frame(&mut self, frame: &VideoFrame<Readable>) -> Result<bool> {
         match self.mode {
             DetectionMode::ObjectsDetection => {
-                if let Ok(model) = self.model.lock() {
+                if let Ok(model) = self.model.read() {
                     let detected = detect_objects(frame, model)?;
 
                     return if detected {
@@ -142,7 +142,7 @@ impl DetectionState {
                         if self.frames_without_motion >= self.motion_max_empty_frames {
                             self.mode = DetectionMode::ObjectsDetection;
                             self.frames_without_motion = 0;
-                            if let Ok(model) = self.model.lock() {
+                            if let Ok(model) = self.model.read() {
                                 return detect_objects(frame, model);
                             }
                         }
