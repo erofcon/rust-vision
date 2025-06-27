@@ -8,9 +8,7 @@ use queue::utils::Payload;
 use queue::utils::QueueType;
 use sqlx::{Pool, Postgres};
 use storage::models::processing_job::ProcessingStatus;
-use storage::models::video::VideoStatus;
 use storage::repositories::processing_jobs_repository::ProcessingJobsRepository;
-use storage::repositories::video_repository::VideoRepository;
 use uuid::Uuid;
 
 #[post("/api/v1/process/publish/{id}")]
@@ -19,8 +17,7 @@ async fn process_publish(
     mq: web::Data<Channel>,
     processing_job_id: web::Path<Uuid>,
 ) -> Result<impl Responder, ApiError> {
-    let pool = pool.get_ref().clone();
-    let process = ProcessingJobsRepository::new(pool.clone());
+    let process = ProcessingJobsRepository::new(pool.get_ref().clone());
     let producer = Producer::new(mq.get_ref().clone()).context("Producer creation error")?;
 
     let result = process
@@ -58,59 +55,13 @@ async fn process_publish(
     Ok(HttpResponse::Ok().json(result))
 }
 
-#[post("/api/v1/video/pipeline/publish/{id}")]
-async fn publish_pipeline(
-    pool: web::Data<Pool<Postgres>>,
-    mq: web::Data<Channel>,
-    path: web::Path<Uuid>,
-) -> Result<impl Responder, ApiError> {
-    // TODO: to delete
-
-    let video_id = path.into_inner();
-    let video_repo = VideoRepository::new(pool.get_ref().clone());
-
-    let video = video_repo
-        .get_by_id(video_id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-
-    if video.status == VideoStatus::Waiting || video.status == VideoStatus::Processing {
-        return Err(ApiError::BadRequest(
-            "The video is already in processing or pending".into(),
-        ));
-    }
-
-    let payload = Payload { id: video.id };
-
-    let bytes = payload
-        .serialize()
-        .context("Failed to serialize payload")
-        .map_err(ApiError::from)?;
-
-    let producer = Producer::new(mq.get_ref().clone()).context("Producer creation error")?;
-    producer
-        .publish(&bytes, QueueType::VideoProcessing)
-        .await
-        .context("Error to publish producer")
-        .map_err(ApiError::from)?;
-
-    video_repo
-        .change_status(video_id, &VideoStatus::Waiting)
-        .await
-        .context("Error to change video status")
-        .map_err(ApiError::from)?;
-
-    Ok(HttpResponse::Ok())
-}
-
 #[post("/api/v1/process/video/cancel/{id}")]
 async fn pipeline_cancel(
     pool: web::Data<Pool<Postgres>>,
     path: web::Path<Uuid>,
 ) -> Result<impl Responder, ApiError> {
     let video_id = path.into_inner();
-    let pool = pool.get_ref().clone();
-    let process = ProcessingJobsRepository::new(pool.clone());
+    let process = ProcessingJobsRepository::new(pool.get_ref().clone());
 
     let video = process
         .get_video_job_by_id(&video_id)
@@ -140,7 +91,5 @@ async fn pipeline_cancel(
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(publish_pipeline)
-        .service(pipeline_cancel)
-        .service(process_publish);
+    cfg.service(pipeline_cancel).service(process_publish);
 }
