@@ -4,6 +4,12 @@ Rust vision is a high-performance system for real-time video processing, object 
 
 The system uses Gstreamer and ORT packages for video capture and analytics.
 
+
+<div style="background-color:#45362c; padding:10px; border-left: 6px solid #ff9900;">
+  <strong>⚠️ Outdated information:</strong> This section is no longer relevant. 
+  The current version will be posted soon.
+</div>
+
 > [!warning]
 > This project is under active development. Most of the features have not been implemented yet.
 
