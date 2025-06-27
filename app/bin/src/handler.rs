@@ -67,6 +67,7 @@ fn handle_message(
                 .get_by_id(id)
                 .await?
                 .ok_or_else(|| anyhow!("Video not found: {}", id))?;
+
             if video.status == VideoStatus::Cancelled {
                 cancelled = true;
                 return Ok(());
@@ -75,6 +76,7 @@ fn handle_message(
             let stream_url = format!("rtmp://localhost/live/stream_{}", id);
             let mut pipeline =
                 FilePipeline::new(&video.file_path, input_width, input_height, &stream_url)?;
+
             let stop_flag = pipeline.get_stop_flag();
             let cancel_rx = register_video_processing(id, stop_flag.clone());
 

@@ -18,6 +18,7 @@ storage.workspace = true
 lapin.workspace = true
 sqlx.workspace = true
 motion.workspace = true
+parking_lot.workspace = true
 
 #refactor
 async-std = "1.13.1"
@@ -27,5 +28,4 @@ streaming = { path = "../../crates/streaming" }
 
 uuid = { version = "1.16.0", features = ["v4"] }
 actix-multipart = "0.7.2"
-parking_lot = "0.12.3"
 tracing = "0.1.41"

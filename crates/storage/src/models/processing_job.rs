@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Type;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Debug, sqlx::Type)]
+#[derive(Serialize, Deserialize, Debug, sqlx::Type, PartialEq, Eq)]
 #[sqlx(type_name = "processing_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ProcessingStatus {

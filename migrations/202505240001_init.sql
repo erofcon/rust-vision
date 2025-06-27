@@ -60,6 +60,7 @@ CREATE TYPE processing_status AS ENUM ('uploaded', 'waiting', 'processing', 'com
 END IF;
 END$$;
 
+-- необходимо убрать status из processing_jobs
 
 CREATE TABLE processing_jobs
 (

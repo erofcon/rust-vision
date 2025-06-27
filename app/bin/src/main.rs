@@ -1,23 +1,25 @@
 use actix_cors::Cors;
 use actix_web::middleware::Logger;
 use actix_web::{App, HttpServer, web};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use api::handlers::{day_map, health, organization, processing_job, publish};
 use common::config::ProjectConfig;
 use common::detection_state::DetectionState;
+use common::pipeline_registry::{register_video_processing, unregister_video_processing};
 use detection::model::Model;
 use futures::future::BoxFuture;
-use gst::prelude::ElementExt;
 use gst_streaming::pipeline::GstPipeline;
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
 use motion::motion::Motion;
+use parking_lot::{Mutex, RwLock};
 use queue::connection::MQ;
 use queue::consumer::Consumer;
 use queue::utils::{Payload, QueueType};
 use sqlx::{Pool, Postgres};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use storage::database::Database;
+use storage::models::processing_job::ProcessingStatus;
 use storage::repositories::processing_jobs_repository::ProcessingJobsRepository;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
@@ -47,7 +49,7 @@ async fn main() -> Result<()> {
     for id in 0..config.worker.worker_count {
         let channel = mq_channel.clone();
         let db_pool_clone = db_pool.clone();
-        let model_clone = model.clone(); // Клонируем Arc<RwLock<Model>>
+        let model_clone = model.clone();
         let mut shutdown_rx = shutdown_tx.subscribe();
 
         tokio::spawn(async move {
@@ -108,7 +110,7 @@ pub async fn spawn_worker(
     worker_id: usize,
     channel: lapin::Channel,
     db: Pool<Postgres>,
-    model: Arc<RwLock<Model>>, // RwLock для множественного чтения
+    model: Arc<RwLock<Model>>,
 ) -> JoinHandle<()> {
     let mut consumer = Consumer::new(channel, QueueType::VideoProcessing)
         .await
@@ -141,53 +143,82 @@ fn handle_message(
     worker_id: usize,
 ) -> BoxFuture<'static, std::result::Result<(), anyhow::Error>> {
     Box::pin(async move {
+        let mut cancelled = false;
         let payload = Payload::deserialize(&data)?;
 
-        let video_job = processing_job_repo.get_video_job_by_id(&payload.id).await?;
-        println!(
-            "Processing video job: {} (file: {})",
-            video_job.id, video_job.file_path
-        );
+        let inner_res: Result<(), anyhow::Error> = (|| async {
+            let video_job = processing_job_repo
+                .get_video_job_by_id(&payload.id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Video job not found"))?;
 
-        let rtmp_url = format!("rtmp://localhost/live/stream_{}", video_job.id);
-
-        let motion = Arc::new(Mutex::new(Motion::new()?));
-
-        let detection_state = Arc::new(Mutex::new(DetectionState::new(motion, model, 120, 30)));
-
-        let detection_state_clone = detection_state.clone();
-
-        let mut pipeline = GstPipeline::new(&video_job.file_path, &rtmp_url, move |buffer| {
-            if let Err(e) = process_buffer(buffer, &detection_state_clone) {
-                eprintln!("Error processing buffer: {}", e);
+            if video_job.status == ProcessingStatus::Cancelled {
+                cancelled = true;
+                return Ok(());
             }
-        })?;
 
-        println!("Starting pipeline for video job: {}", video_job.id);
+            processing_job_repo
+                .update_video_jobs_status(&video_job.id, ProcessingStatus::Processing)
+                .await?;
 
-        println!(
-            "Worker {} processing video job: {} (file: {})",
-            worker_id, video_job.id, video_job.file_path
-        );
+            let rtmp_url = format!("rtmp://localhost/live/stream_{}", video_job.id);
+            let motion = Arc::new(Mutex::new(Motion::new()?));
+            let detection_state = Arc::new(Mutex::new(DetectionState::new(motion, model, 120, 30)));
+            let detection_state_clone = detection_state.clone();
 
-        tokio::task::spawn_blocking(move || pipeline.run())
-            .await
-            .map_err(|e| anyhow::anyhow!("Pipeline task panicked: {:?}", e))??;
+            let mut pipeline = GstPipeline::new(&video_job.file_path, &rtmp_url, move |buffer| {
+                if let Err(e) = process_buffer(buffer, &detection_state_clone) {
+                    eprintln!("Error processing buffer: {}", e);
+                }
+            })?;
 
-        Ok(())
+            let stop_flag = pipeline.get_stop_flag();
+            let cancel_rx = register_video_processing(payload.id, stop_flag.clone());
+
+            let pipeline_handle = tokio::task::spawn_blocking(move || pipeline.run());
+
+            tokio::select! {
+                _ = cancel_rx => {
+                    cancelled = true;
+                    stop_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                }
+                run_res = pipeline_handle => {
+                    match run_res {
+                        Ok(Ok(())) => Ok(()),
+                        Ok(Err(e)) => Err(anyhow!("Pipeline error: {:?}", e)),
+                        Err(e) => Err(anyhow!("Join error: {:?}", e)),
+                    }
+                }
+            }
+        })()
+        .await;
+
+        let final_status = if cancelled {
+            ProcessingStatus::Cancelled
+        } else if inner_res.is_err() {
+            ProcessingStatus::Failed
+        } else {
+            ProcessingStatus::Completed
+        };
+
+        processing_job_repo
+            .update_video_jobs_status(&payload.id, final_status)
+            .await?;
+
+        unregister_video_processing(&payload.id);
+
+        inner_res
     })
 }
 
 fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionState>>) -> Result<()> {
-    match state.lock() {
-        Ok(mut state_guard) => {
-            let _detection_result = state_guard.process_frame(buffer)?;
-            // TODO: обработать результат детекции
-            // Например: сохранить в БД, отправить уведомление и т.д.
-            Ok(())
-        }
-        Err(e) => {
-            anyhow::bail!("Failed to lock detection state mutex: {}", e);
-        }
+    let mut state_guard = state.lock();
+    let detection_result = state_guard.process_frame(buffer)?;
+
+    if detection_result {
+        println!("Detection positive - object or motion detected!");
     }
+
+    Ok(())
 }

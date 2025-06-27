@@ -4,7 +4,6 @@ use anyhow::Result;
 use sqlx::{Pool, Postgres};
 use storage::models::organization::{CreateCameraPreset, CreateOrganization};
 use storage::repositories::organization_repository::OrganizationRepository;
-use uuid::Uuid;
 
 #[post("/api/v1/create/organization")]
 async fn create_organization(

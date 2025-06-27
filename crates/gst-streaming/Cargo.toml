@@ -12,3 +12,4 @@ common.workspace = true
 motion.workspace = true
 detection.workspace = true
 storage.workspace = true
+parking_lot.workspace = true

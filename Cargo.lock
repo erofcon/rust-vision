@@ -1036,6 +1036,7 @@ dependencies = [
  "lazy_static",
  "motion",
  "opencv",
+ "parking_lot",
  "serde",
  "tokio",
  "uuid",
@@ -1874,6 +1875,7 @@ dependencies = [
  "gstreamer-pbutils",
  "gstreamer-video",
  "motion",
+ "parking_lot",
  "storage",
 ]
 

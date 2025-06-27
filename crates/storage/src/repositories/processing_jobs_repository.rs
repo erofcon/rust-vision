@@ -1,6 +1,7 @@
 use crate::models::processing_job::{
     CreateProcessingJob, ProcessingJob, ProcessingJobWithVideoJobResponse, ProcessingStatus,
 };
+use crate::models::video::{Video, VideoStatus};
 use crate::models::video_job::{VideoJob, VideoJobCreate};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -18,7 +19,8 @@ impl ProcessingJobsRepository {
         Self { pool }
     }
 
-    // TODO: убрать во всех api отдельные UUID. Перемести в модель
+    // TODO: убрать во всех api отдельные UUID. Перенести в модель
+    // TODO: необходимо убрать status (не используется)
     pub async fn create_processing_jobs(&self, job: &CreateProcessingJob) -> Result<ProcessingJob> {
         let result = sqlx::query_as(
             r#"
@@ -126,34 +128,32 @@ impl ProcessingJobsRepository {
         Ok(result)
     }
 
-    pub async fn update_video_jobs_status_conditionally(
+    pub async fn update_video_jobs_status(
         &self,
-        processing_job_id: &Uuid,
+        video_job_id: &Uuid,
         new_status: ProcessingStatus,
     ) -> Result<VideoJob> {
         let result = sqlx::query_as(
             r#"
             UPDATE video_jobs
             SET status = $1
-            WHERE processing_jobs_id = $2
-            AND status IN ('uploaded', 'failed', 'cancelled')
+            WHERE id = $2
             RETURNING *
             "#,
         )
         .bind(new_status)
-        .bind(processing_job_id)
+        .bind(video_job_id)
         .fetch_one(&self.pool)
         .await?;
 
         Ok(result)
     }
 
-    pub async fn get_video_job_by_id(&self, id: &Uuid) -> Result<VideoJob> {
+    pub async fn get_video_job_by_id(&self, id: &Uuid) -> Result<Option<VideoJob>> {
         let result = sqlx::query_as(r#"SELECT * FROM video_jobs WHERE id = $1"#)
             .bind(&id)
-            .fetch_one(&self.pool)
-            .await
-            ?;
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(result)
     }
