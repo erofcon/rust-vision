@@ -18,14 +18,13 @@ pub fn run(
     model_input_height: i32,
     out_classes: Option<&[usize]>,
 ) -> Result<Vec<(BoundingBox, usize, f32)>> {
-    let start_time = Instant::now();
+
 
     let image = prepare_image(frame)?;
 
-    let duration = start_time.elapsed();
-
-    println!("{:?}", duration);
     let input = inputs!["images"=>image]?;
+
+    let start_time = Instant::now();
 
     let output = {
         let outputs = session.run(input)?;
@@ -35,15 +34,22 @@ pub fn run(
             .t()
             .into_owned()
     };
+    let duration = start_time.elapsed();
 
-    process_output(
+    println!("{:?}", duration);
+
+    let out = process_output(
         output,
         original_img_width,
         original_img_height,
         model_input_width,
         model_input_height,
         out_classes,
-    )
+    );
+
+
+
+    out
 }
 
 fn process_output(

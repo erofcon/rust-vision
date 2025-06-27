@@ -6,14 +6,30 @@ resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0.98"
+actix-web = "4.11.0"
+actix-multipart = "0.7.2"
+actix-cors = "0.7.1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+sqlx = "0.8.3"
+futures = "0.3.31"
 gst = { package = "gstreamer", version = "0.23.5" }
 gst-app = { package = "gstreamer-app", version = "0.23.5" }
 gst-video = { package = "gstreamer-video", version = "0.23.5" }
 gst-pbutils = { package = "gstreamer-pbutils", version = "0.23.5" }
+tokio = "1.45.1"
+regex = "1.11.1"
 opencv = "0.94.4"
 parking_lot = "0.12.3"
 rayon = "1.10.0"
-common = { path = "crates/common" }
-motion = { path = "crates/motion" }
+lapin = "2.5.3"
 detection = { path = "crates/detection" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
+uuid = { version = "1.16.0", features = ["v4"] }
+
+api = { path = "crates/api" }
+common = { path = "crates/common" }
+motion = { path = "crates/motion" }
+queue = { path = "crates/queue" }
+storage = { path = "crates/storage" }
+gst-streaming = {path = "crates/gst-streaming"}

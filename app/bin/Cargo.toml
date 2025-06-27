@@ -4,22 +4,28 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.98"
-tokio = "1.44.2"
-queue = { path = "../../crates/queue" }
-common = { path = "../../crates/common" }
-futures = "0.3.31"
+anyhow.workspace = true
+actix-web.workspace = true
+actix-cors.workspace = true
+api.workspace = true
+detection.workspace = true
+futures.workspace = true
+gst-streaming.workspace = true
+tokio.workspace = true
+queue.workspace = true
+common.workspace = true
+storage.workspace = true
+lapin.workspace = true
+sqlx.workspace = true
+motion.workspace = true
+parking_lot.workspace = true
+
+#refactor
 async-std = "1.13.1"
 gst = { package = "gstreamer", version = "0.23.5" }
 gst-video = { package = "gstreamer-video", version = "0.23.5" }
 streaming = { path = "../../crates/streaming" }
-storage = { path = "../../crates/storage" }
-lapin = "2.5.1"
+
 uuid = { version = "1.16.0", features = ["v4"] }
-actix-web = "4.10.2"
-actix-cors = "0.7.1"
 actix-multipart = "0.7.2"
-api = { path = "../../crates/api" }
-detection = { path = "../../crates/detection" }
-parking_lot = "0.12.3"
 tracing = "0.1.41"

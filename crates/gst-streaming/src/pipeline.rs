@@ -13,11 +13,13 @@ use gst::{
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct GstPipeline {
     pipeline: Pipeline,
+    should_stop: Arc<AtomicBool>,
 }
 
 impl GstPipeline {
@@ -118,37 +120,77 @@ impl GstPipeline {
         Element::link_many(&rtmp_branch)?;
         Self::connect_tee_branch(&tee, &rtmp_branch[0], "rtmp")?;
 
-        Ok(GstPipeline { pipeline })
+        Ok(GstPipeline {
+            pipeline,
+            should_stop: Arc::new(AtomicBool::new(false)),
+        })
     }
 
     pub fn run(&mut self) -> Result<()> {
+        let should_stop = self.should_stop.clone();
+
         self.pipeline.set_state(gst::State::Playing)?;
 
         let bus = self.pipeline.bus().unwrap();
 
-        for msg in bus.iter_timed(gst::ClockTime::NONE) {
-            match msg.view() {
-                MessageView::Eos(..) => {
-                    println!("EOS message received, finishing processing");
-                    break;
-                }
-                MessageView::Error(err) => {
-                    let error = err.error();
-                    let debug = err.debug();
-                    println!("Error: {}, debug: {:?}", error, debug);
-                    return Err(anyhow!("GStreamer error: {}", error));
-                }
-                MessageView::StateChanged(state) => {
-                    if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
-                        let old = state.old();
-                        let new = state.current();
-                        println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
+        loop {
+            if should_stop.load(Ordering::SeqCst) {
+                println!("Request to stop pipeline detected");
+                break;
+            }
+
+            // TODO: add logging and proper shutdown
+
+            match bus.timed_pop(gst::ClockTime::from_mseconds(50)) {
+                Some(msg) => match msg.view() {
+                    MessageView::Eos(..) => {
+                        println!("EOS message received, finishing processing");
+                        break;
                     }
+                    MessageView::Error(err) => {
+                        let error = err.error();
+                        let debug = err.debug();
+                        println!("Error: {}, debug: {:?}", error, debug);
+                        return Err(anyhow!("GStreamer error: {}", error));
+                    }
+                    MessageView::StateChanged(state) => {
+                        if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
+                            let old = state.old();
+                            let new = state.current();
+                            println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
+                        }
+                    }
+                    _ => {}
+                },
+                None => {
+                    // Timeout, continue the cycle
                 }
-                _ => {}
-                _ => (),
             }
         }
+
+        // for msg in bus.iter_timed(gst::ClockTime::NONE) {
+        //     match msg.view() {
+        //         MessageView::Eos(..) => {
+        //             println!("EOS message received, finishing processing");
+        //             break;
+        //         }
+        //         MessageView::Error(err) => {
+        //             let error = err.error();
+        //             let debug = err.debug();
+        //             println!("Error: {}, debug: {:?}", error, debug);
+        //             return Err(anyhow!("GStreamer error: {}", error));
+        //         }
+        //         MessageView::StateChanged(state) => {
+        //             if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
+        //                 let old = state.old();
+        //                 let new = state.current();
+        //                 println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
+        //             }
+        //         }
+        //         _ => {}
+        //         _ => (),
+        //     }
+        // }
 
         self.pipeline.set_state(gst::State::Null)?;
         Ok(())
@@ -291,6 +333,32 @@ impl GstPipeline {
             .unwrap_or_else(|| panic!("Failed to get {} sink pad", name));
 
         tee_pad.link(&target_pad)?;
+        Ok(())
+    }
+
+    pub fn get_stop_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.should_stop)
+    }
+
+    pub fn stop(&mut self, timeout_ms: u64) -> Result<()> {
+        self.should_stop.store(true, Ordering::SeqCst);
+
+        if !self.pipeline.send_event(gst::event::Eos::new()) {
+            println!("Failed to send EOS event");
+        }
+
+        let start = std::time::Instant::now();
+        while start.elapsed().as_millis() < timeout_ms as u128 {
+            let state = self.pipeline.current_state();
+            if state == gst::State::Null || state == gst::State::Ready {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        println!("Stopping pipeline");
+        self.pipeline.set_state(gst::State::Null)?;
+
         Ok(())
     }
 }

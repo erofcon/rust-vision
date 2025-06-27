@@ -5,7 +5,8 @@ use gst_video::video_frame::Readable;
 use gst_video::{VideoFrame, VideoFrameExt};
 use motion::motion::Motion;
 use opencv::core::{AlgorithmHint, CV_8UC3, CV_8UC4, Mat};
-use std::sync::{Arc, Mutex, MutexGuard};
+use parking_lot::{Mutex, RwLock};
+use std::sync::Arc;
 
 enum DetectionMode {
     ObjectsDetection,
@@ -66,25 +67,23 @@ fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
     Ok(mat)
 }
 
-fn detect_objects(frame: &VideoFrame<Readable>, model: MutexGuard<Model>) -> Result<bool> {
+fn detect_objects(frame: &VideoFrame<Readable>, model: &Model) -> Result<bool> {
     let result = run(model.get_session(), frame, 192, 180, 640, 640, Some(&[0]))?;
     println!("Detected objects: {:?}", result.len());
     println!("Detecting objects ...");
-    Ok(false)
+    Ok(result.len() > 0) // Возвращаем true если что-то обнаружено
 }
 
-fn detect_motion(frame: &VideoFrame<Readable>, mut motion: MutexGuard<Motion>) -> Result<bool> {
+fn detect_motion(frame: &VideoFrame<Readable>, motion: &mut Motion) -> Result<bool> {
     println!("Detecting motion ...");
     let mat = video_frame_to_mat(frame)?;
-
     let result = motion.predict(mat)?;
-
     Ok(result)
 }
 
 pub struct DetectionState {
     motion: Arc<Mutex<Motion>>,
-    model: Arc<Mutex<Model>>,
+    model: Arc<RwLock<Model>>,
     mode: DetectionMode,
     frames_without_detection: usize,
     frames_without_motion: usize,
@@ -95,14 +94,14 @@ pub struct DetectionState {
 impl DetectionState {
     pub fn new(
         motion: Arc<Mutex<Motion>>,
-        model: Arc<Mutex<Model>>,
+        model: Arc<RwLock<Model>>,
         detection_max_empty_frames: usize,
         motion_max_empty_frames: usize,
     ) -> Self {
         Self {
             motion,
             model,
-            mode: DetectionMode::ObjectsDetection, // Start with person detection
+            mode: DetectionMode::ObjectsDetection,
             frames_without_detection: 0,
             frames_without_motion: 0,
             detection_max_empty_frames,
@@ -113,47 +112,44 @@ impl DetectionState {
     pub fn process_frame(&mut self, frame: &VideoFrame<Readable>) -> Result<bool> {
         match self.mode {
             DetectionMode::ObjectsDetection => {
-                if let Ok(model) = self.model.lock() {
-                    let detected = detect_objects(frame, model)?;
+                let model = self.model.read();
+                let detected = detect_objects(frame, &*model)?;
 
-                    return if detected {
+                if detected {
+                    self.frames_without_detection = 0;
+                    Ok(true)
+                } else {
+                    self.frames_without_detection += 1;
+                    if self.frames_without_detection >= self.detection_max_empty_frames {
+                        println!("Switching to motion detection mode");
+                        self.mode = DetectionMode::MotionDetection;
                         self.frames_without_detection = 0;
-                        Ok(true)
-                    } else {
-                        self.frames_without_detection += 1;
-                        if self.frames_without_detection >= self.detection_max_empty_frames {
-                            // TODO: add to log
-                            self.mode = DetectionMode::MotionDetection;
-                            self.frames_without_detection = 0;
-                        }
-                        Ok(false)
-                    };
+                    }
+                    Ok(false)
+                }
+            }
+            DetectionMode::MotionDetection => {
+                let mut motion = self.motion.lock();
+                let motion_detected = detect_motion(frame, &mut *motion)?;
+
+                if motion_detected {
+                    println!("Motion detected, switching back to object detection");
+                    self.frames_without_motion = 0;
+                    self.mode = DetectionMode::ObjectsDetection;
+
+                    drop(motion);
+                    let model = self.model.read();
+                    return detect_objects(frame, &*model);
+                } else {
+                    self.frames_without_motion += 1;
+                    if self.frames_without_motion >= self.motion_max_empty_frames {
+                        println!("No motion for too long, switching to object detection");
+                        self.mode = DetectionMode::ObjectsDetection;
+                        self.frames_without_motion = 0;
+                    }
                 }
 
                 Ok(false)
-            }
-            DetectionMode::MotionDetection => {
-                if let Ok(motion) = self.motion.lock() {
-                    let motion_detected = detect_motion(frame, motion)?;
-
-                    if motion_detected {
-                        // TODO: add to log
-                        self.frames_without_motion += 1;
-                        if self.frames_without_motion >= self.motion_max_empty_frames {
-                            self.mode = DetectionMode::ObjectsDetection;
-                            self.frames_without_motion = 0;
-                            if let Ok(model) = self.model.lock() {
-                                return detect_objects(frame, model);
-                            }
-                        }
-                    } else {
-                        self.frames_without_motion = 0;
-                    }
-
-                    Ok(false)
-                } else {
-                    Ok(false)
-                }
             }
         }
     }

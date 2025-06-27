@@ -28,7 +28,7 @@ fn main() -> Result<()> {
 
     gst::init()?;
 
-    let path = "D:/Videos/2.mp4";
+    let path = r"D:/Videos\\NVR_ch1_main_20241230120306_20241230120519.mp4";
     let file_path = Path::new(path);
     if !file_path.exists() {
         return Err(anyhow!("File does not exist: {}", file_path.display()));

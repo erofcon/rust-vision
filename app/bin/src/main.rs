@@ -1,68 +1,59 @@
 use actix_cors::Cors;
 use actix_web::middleware::Logger;
 use actix_web::{App, HttpServer, web};
-use anyhow::Result;
-use api::handlers::{health, publish, video};
+use anyhow::{Result, anyhow};
+use api::handlers::{day_map, health, organization, processing_job, publish};
 use common::config::ProjectConfig;
+use common::detection_state::DetectionState;
+use common::pipeline_registry::{register_video_processing, unregister_video_processing};
 use detection::model::Model;
+use futures::future::BoxFuture;
+use gst_streaming::pipeline::GstPipeline;
+use gst_video::VideoFrame;
+use gst_video::video_frame::Readable;
+use motion::motion::Motion;
+use parking_lot::{Mutex, RwLock};
 use queue::connection::MQ;
+use queue::consumer::Consumer;
+use queue::utils::{Payload, QueueType};
+use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use storage::database::Database;
-use storage::repositories::video_repository::VideoRepository;
+use storage::models::processing_job::ProcessingStatus;
+use storage::repositories::processing_jobs_repository::ProcessingJobsRepository;
 use tokio::sync::broadcast;
-
-mod frame_processor;
-mod handler;
+use tokio::task::JoinHandle;
 
 #[actix_web::main]
 async fn main() -> Result<()> {
-    // Initialize GStreamer
-    // TODO: delete to production
-
-    unsafe {
-        std::env::set_var("GST_DEBUG", "3");
-        std::env::set_var("RUST_BACKTRACE", "full");
-    }
+    let config = ProjectConfig::load()?;
 
     gst::init()?;
 
-    let config = ProjectConfig::load()?;
+    let model = Arc::new(RwLock::new(Model::new(&config.base_detection_model.path)?));
+    println!("Model loaded and ready for shared access");
 
-    let model = Arc::new(Model::new(&config.base_detection_model.path)?);
-    println!(
-        "Loaded detection model from {}",
-        config.base_detection_model.path
-    );
-
+    // DB
     let db = Database::new(&config.database.connection_string()).await?;
     db.ping().await?;
     let db_pool = db.get_pool().clone();
 
+    // MQ
     let mq = MQ::new(&config.mq.connection_to_string()).await?;
     let mq_channel = mq.get_channel().clone();
 
-    let video_repo = Arc::new(VideoRepository::new(db_pool.clone()));
-
-    let (in_w, in_h) = (
-        config.base_detection_model.input_width,
-        config.base_detection_model.input_height,
-    );
-
-    let frame_processor = frame_processor::build_frame_processor(Arc::clone(&model), in_w, in_h);
-
+    // Workers
     println!("Spawning {} worker(s)...", config.worker.worker_count);
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
     for id in 0..config.worker.worker_count {
+        let channel = mq_channel.clone();
+        let db_pool_clone = db_pool.clone();
+        let model_clone = model.clone();
         let mut shutdown_rx = shutdown_tx.subscribe();
-        let repo = Arc::clone(&video_repo);
-        let chan = mq_channel.clone();
-        let processor = Arc::clone(&frame_processor);
 
         tokio::spawn(async move {
-            // Spawn consumer and return its JoinHandle
-            let handle = handler::spawn_worker(id, chan, repo, processor, in_w, in_h).await;
-
+            let handle = spawn_worker(id, channel, db_pool_clone, model_clone).await;
             tokio::select! {
                 _ = shutdown_rx.recv() => {
                     println!("Worker {} received shutdown signal", id);
@@ -73,12 +64,12 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-
             println!("Worker {} stopped", id);
         });
     }
 
-    // Start HTTP server
+    let api_db = db.get_pool().clone();
+
     let bind_addr = format!("{}:{}", config.api.host, config.api.port);
     println!("Starting HTTP server on {}", bind_addr);
 
@@ -92,16 +83,17 @@ async fn main() -> Result<()> {
         App::new()
             .wrap(Logger::default())
             .wrap(cors)
-            .app_data(web::Data::new(db_pool.clone()))
+            .app_data(web::Data::new(api_db.clone()))
             .app_data(web::Data::new(mq_channel.clone()))
             .configure(health::config)
-            .configure(video::config)
             .configure(publish::config)
+            .configure(organization::config)
+            .configure(day_map::config)
+            .configure(processing_job::config)
     })
     .bind(&bind_addr)?
     .run();
 
-    // Graceful shutdown
     tokio::select! {
         res = server => res.map_err(|e| anyhow::anyhow!(e)),
         _ = tokio::signal::ctrl_c() => {
@@ -109,5 +101,124 @@ async fn main() -> Result<()> {
             Ok(())
         }
     }
-    .map(|_| ())
+    .map(|_| ())?;
+
+    Ok(())
+}
+
+pub async fn spawn_worker(
+    worker_id: usize,
+    channel: lapin::Channel,
+    db: Pool<Postgres>,
+    model: Arc<RwLock<Model>>,
+) -> JoinHandle<()> {
+    let mut consumer = Consumer::new(channel, QueueType::VideoProcessing)
+        .await
+        .expect("Failed to create consumer");
+
+    let processing_job_repo = ProcessingJobsRepository::new(db);
+
+    consumer.set_handler(move |data, _routing| {
+        let processing_job_repo_clone = processing_job_repo.clone();
+        let model_clone = model.clone();
+        handle_message(
+            data.to_vec(),
+            processing_job_repo_clone,
+            model_clone,
+            worker_id,
+        )
+    });
+
+    tokio::spawn(async move {
+        if let Err(e) = consumer.start().await {
+            eprintln!("[Worker {}] Consumer error: {}", worker_id, e);
+        }
+    })
+}
+
+fn handle_message(
+    data: Vec<u8>,
+    processing_job_repo: ProcessingJobsRepository,
+    model: Arc<RwLock<Model>>,
+    worker_id: usize,
+) -> BoxFuture<'static, std::result::Result<(), anyhow::Error>> {
+    Box::pin(async move {
+        let mut cancelled = false;
+        let payload = Payload::deserialize(&data)?;
+
+        let inner_res: Result<(), anyhow::Error> = (|| async {
+            let video_job = processing_job_repo
+                .get_video_job_by_id(&payload.id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Video job not found"))?;
+
+            if video_job.status == ProcessingStatus::Cancelled {
+                cancelled = true;
+                return Ok(());
+            }
+
+            processing_job_repo
+                .update_video_jobs_status(&video_job.id, ProcessingStatus::Processing)
+                .await?;
+
+            let rtmp_url = format!("rtmp://localhost/live/stream_{}", video_job.id);
+            let motion = Arc::new(Mutex::new(Motion::new()?));
+            let detection_state = Arc::new(Mutex::new(DetectionState::new(motion, model, 120, 30)));
+            let detection_state_clone = detection_state.clone();
+
+            let mut pipeline = GstPipeline::new(&video_job.file_path, &rtmp_url, move |buffer| {
+                if let Err(e) = process_buffer(buffer, &detection_state_clone) {
+                    eprintln!("Error processing buffer: {}", e);
+                }
+            })?;
+
+            let stop_flag = pipeline.get_stop_flag();
+            let cancel_rx = register_video_processing(payload.id, stop_flag.clone());
+
+            let pipeline_handle = tokio::task::spawn_blocking(move || pipeline.run());
+
+            tokio::select! {
+                _ = cancel_rx => {
+                    cancelled = true;
+                    stop_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                }
+                run_res = pipeline_handle => {
+                    match run_res {
+                        Ok(Ok(())) => Ok(()),
+                        Ok(Err(e)) => Err(anyhow!("Pipeline error: {:?}", e)),
+                        Err(e) => Err(anyhow!("Join error: {:?}", e)),
+                    }
+                }
+            }
+        })()
+        .await;
+
+        let final_status = if cancelled {
+            ProcessingStatus::Cancelled
+        } else if inner_res.is_err() {
+            ProcessingStatus::Failed
+        } else {
+            ProcessingStatus::Completed
+        };
+
+        processing_job_repo
+            .update_video_jobs_status(&payload.id, final_status)
+            .await?;
+
+        unregister_video_processing(&payload.id);
+
+        inner_res
+    })
+}
+
+fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionState>>) -> Result<()> {
+    let mut state_guard = state.lock();
+    let detection_result = state_guard.process_frame(buffer)?;
+
+    if detection_result {
+        println!("Detection positive - object or motion detected!");
+    }
+
+    Ok(())
 }
