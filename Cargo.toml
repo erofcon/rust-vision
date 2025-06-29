@@ -26,10 +26,14 @@ lapin = "2.5.3"
 detection = { path = "crates/detection" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
 uuid = { version = "1.16.0", features = ["v4"] }
+ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
 
 api = { path = "crates/api" }
 common = { path = "crates/common" }
 motion = { path = "crates/motion" }
 queue = { path = "crates/queue" }
 storage = { path = "crates/storage" }
-gst-streaming = {path = "crates/gst-streaming"}
+gst-streaming = { path = "crates/gst-streaming" }
+face-recognition = { path = "crates/face-recognition" }
+
+

@@ -18,8 +18,6 @@ pub fn run(
     model_input_height: i32,
     out_classes: Option<&[usize]>,
 ) -> Result<Vec<(BoundingBox, usize, f32)>> {
-
-
     let image = prepare_image(frame)?;
 
     let input = inputs!["images"=>image]?;
@@ -34,6 +32,7 @@ pub fn run(
             .t()
             .into_owned()
     };
+
     let duration = start_time.elapsed();
 
     println!("{:?}", duration);
@@ -46,8 +45,6 @@ pub fn run(
         model_input_height,
         out_classes,
     );
-
-
 
     out
 }

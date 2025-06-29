@@ -5,13 +5,11 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
-parking_lot.workspace = true
 gst-video.workspace = true
 opencv.workspace = true
 rayon.workspace = true
 ndarray.workspace = true
-
-ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
+ort.workspace = true
 
 [features]
 load-dynamic = ["ort/load-dynamic"]

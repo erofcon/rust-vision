@@ -1,0 +1,19 @@
+[package]
+name = "face-recognition"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+image = "0.25"
+imageproc = "0.25"
+rusttype = "0.9"
+
+anyhow.workspace = true
+ndarray.workspace = true
+tokio.workspace = true
+ort.workspace = true
+rayon.workspace = true
+
+[features]
+load-dynamic = ["ort/load-dynamic"]
+cuda = ["ort/cuda"]
