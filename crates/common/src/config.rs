@@ -47,7 +47,14 @@ impl MQ {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct BaseDetectionModel {
+pub struct ObjectDetectionModel {
+    pub path: String,
+    pub input_width: i32,
+    pub input_height: i32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct FaceDetectionModel {
     pub path: String,
     pub input_width: i32,
     pub input_height: i32,
@@ -63,9 +70,11 @@ pub struct ProjectConfig {
     pub api: Api,
     pub database: Database,
     pub mq: MQ,
-    pub base_detection_model: BaseDetectionModel,
+    pub object_detection_model: ObjectDetectionModel,
+    pub face_detection_model: FaceDetectionModel,
     pub worker: Worker,
 }
+
 impl ProjectConfig {
     pub fn load() -> Result<ProjectConfig, ConfigError> {
         let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "debug".into());

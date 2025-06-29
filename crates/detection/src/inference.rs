@@ -11,18 +11,18 @@ use std::time::Instant;
 
 pub fn run(
     session: &Session,
-    frame: &VideoFrame<Readable>,
+    frame: Array<f32, ndarray::Dim<[usize; 4]>>,
     original_img_width: i32,
     original_img_height: i32,
     model_input_width: i32,
     model_input_height: i32,
     out_classes: Option<&[usize]>,
-) -> Result<Vec<(BoundingBox, usize, f32)>> {
-    let image = prepare_image(frame)?;
+) -> Result<Vec<(BoundingBox, usize, f32)>> { //
+    // let image = prepare_image(frame)?;
 
-    let input = inputs!["images"=>image]?;
+    let input = inputs!["images"=>frame]?;
 
-    let start_time = Instant::now();
+    // let start_time = Instant::now();
 
     let output = {
         let outputs = session.run(input)?;
@@ -33,9 +33,9 @@ pub fn run(
             .into_owned()
     };
 
-    let duration = start_time.elapsed();
+    // let duration = start_time.elapsed();
 
-    println!("{:?}", duration);
+    // println!("{:?}", duration);
 
     let out = process_output(
         output,
@@ -45,11 +45,11 @@ pub fn run(
         model_input_height,
         out_classes,
     );
-
+    //
     out
 }
 
-fn process_output(
+pub fn process_output(
     output: Array<f32, IxDyn>,
     original_img_width: i32,
     original_img_height: i32,
@@ -111,7 +111,7 @@ fn process_output(
     Ok(selected)
 }
 
-fn prepare_image(frame: &VideoFrame<Readable>) -> Result<Array<f32, ndarray::Dim<[usize; 4]>>> {
+pub fn prepare_image(frame: &VideoFrame<Readable>) -> Result<Array<f32, ndarray::Dim<[usize; 4]>>> {
     // let start_time = Instant::now();
 
     let frame_width = frame.width() as usize;

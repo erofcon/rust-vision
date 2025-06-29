@@ -30,8 +30,15 @@ async fn main() -> Result<()> {
 
     gst::init()?;
 
-    let model = Arc::new(RwLock::new(Model::new(&config.base_detection_model.path)?));
-    println!("Model loaded and ready for shared access");
+    // models
+    let object_detection_model = Arc::new(RwLock::new(Model::new(
+        &config.object_detection_model.path,
+    )?));
+
+    let face_detection_model =
+        Arc::new(RwLock::new(Model::new(&config.face_detection_model.path)?));
+
+    println!("Models loaded and ready for shared access");
 
     // DB
     let db = Database::new(&config.database.connection_string()).await?;
@@ -49,11 +56,19 @@ async fn main() -> Result<()> {
     for id in 0..config.worker.worker_count {
         let channel = mq_channel.clone();
         let db_pool_clone = db_pool.clone();
-        let model_clone = model.clone();
+        let object_detection_model_clone = object_detection_model.clone();
+        let face_detection_model_clone = face_detection_model.clone();
         let mut shutdown_rx = shutdown_tx.subscribe();
 
         tokio::spawn(async move {
-            let handle = spawn_worker(id, channel, db_pool_clone, model_clone).await;
+            let handle = spawn_worker(
+                id,
+                channel,
+                db_pool_clone,
+                object_detection_model_clone,
+                face_detection_model_clone,
+            )
+            .await;
             tokio::select! {
                 _ = shutdown_rx.recv() => {
                     println!("Worker {} received shutdown signal", id);
@@ -110,7 +125,8 @@ pub async fn spawn_worker(
     worker_id: usize,
     channel: lapin::Channel,
     db: Pool<Postgres>,
-    model: Arc<RwLock<Model>>,
+    object_detection_model: Arc<RwLock<Model>>,
+    face_detection_model_clone: Arc<RwLock<Model>>,
 ) -> JoinHandle<()> {
     let mut consumer = Consumer::new(channel, QueueType::VideoProcessing)
         .await
@@ -120,11 +136,13 @@ pub async fn spawn_worker(
 
     consumer.set_handler(move |data, _routing| {
         let processing_job_repo_clone = processing_job_repo.clone();
-        let model_clone = model.clone();
+        let object_detection_model_clone = object_detection_model.clone();
+        let face_detection_model_clone = face_detection_model_clone.clone();
         handle_message(
             data.to_vec(),
             processing_job_repo_clone,
-            model_clone,
+            object_detection_model_clone,
+            face_detection_model_clone,
             worker_id,
         )
     });
@@ -139,7 +157,8 @@ pub async fn spawn_worker(
 fn handle_message(
     data: Vec<u8>,
     processing_job_repo: ProcessingJobsRepository,
-    model: Arc<RwLock<Model>>,
+    object_detection_model: Arc<RwLock<Model>>,
+    face_detection_model: Arc<RwLock<Model>>,
     worker_id: usize,
 ) -> BoxFuture<'static, std::result::Result<(), anyhow::Error>> {
     Box::pin(async move {
@@ -163,7 +182,14 @@ fn handle_message(
 
             let rtmp_url = format!("rtmp://localhost/live/stream_{}", video_job.id);
             let motion = Arc::new(Mutex::new(Motion::new()?));
-            let detection_state = Arc::new(Mutex::new(DetectionState::new(motion, model, 120, 30)));
+            let detection_state = Arc::new(Mutex::new(DetectionState::new(
+                motion,
+                object_detection_model,
+                face_detection_model,
+                24,
+                300,
+            )));
+
             let detection_state_clone = detection_state.clone();
 
             let mut pipeline = GstPipeline::new(&video_job.file_path, &rtmp_url, move |buffer| {
@@ -214,11 +240,7 @@ fn handle_message(
 
 fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionState>>) -> Result<()> {
     let mut state_guard = state.lock();
-    let detection_result = state_guard.process_frame(buffer)?;
-
-    if detection_result {
-        println!("Detection positive - object or motion detected!");
-    }
+    let _ = state_guard.process_frame(buffer)?;
 
     Ok(())
 }

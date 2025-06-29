@@ -1,12 +1,20 @@
-use anyhow::{Result, anyhow};
-use detection::inference::run;
+use anyhow::{Error, Result, anyhow};
+use detection::inference::{prepare_image, run};
 use detection::model::Model;
 use gst_video::video_frame::Readable;
 use gst_video::{VideoFrame, VideoFrameExt};
 use motion::motion::Motion;
+use ndarray::Array4;
 use opencv::core::{AlgorithmHint, CV_8UC3, CV_8UC4, Mat};
 use parking_lot::{Mutex, RwLock};
-use std::sync::Arc;
+use rayon::ThreadPoolBuilder;
+use rayon::prelude::*;
+use std::sync::{Arc, mpsc};
+use std::thread;
+use tokio::runtime::Runtime;
+use tokio::time::Instant;
+
+type TaskResult = (&'static str, Result<()>);
 
 enum DetectionMode {
     ObjectsDetection,
@@ -67,11 +75,91 @@ fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
     Ok(mat)
 }
 
-fn detect_objects(frame: &VideoFrame<Readable>, model: &Model) -> Result<bool> {
-    let result = run(model.get_session(), frame, 192, 180, 640, 640, Some(&[0]))?;
-    println!("Detected objects: {:?}", result.len());
-    println!("Detecting objects ...");
-    Ok(result.len() > 0) // Возвращаем true если что-то обнаружено
+fn detect_objects(
+    frame: &VideoFrame<Readable>,
+    object_detection_model: &Model,
+    face_detection_model: &Model,
+) -> Result<bool> {
+    //50-52 ms
+
+    let start_time = Instant::now();
+
+    let tensor = prepare_image(frame)?;
+    let tensor_arc = Arc::new(tensor);
+
+    let tasks = vec![
+        (object_detection_model.clone(), Arc::clone(&tensor_arc)),
+        (face_detection_model.clone(), Arc::clone(&tensor_arc)),
+    ];
+
+    let results: Result<Vec<_>, _> = tasks
+        .into_par_iter()
+        .map(|(model, tensor)| {
+            run(
+                model.get_session(),
+                (*tensor).clone(),
+                1920,
+                1080,
+                640,
+                640,
+                Some(&[0]),
+            )
+        })
+        .collect();
+
+    let results = results?;
+
+    let duration = start_time.elapsed();
+    println!("Total time: {:?}", duration);
+
+    Ok(true)
+}
+
+fn detect_objects_v2(
+    frame: &VideoFrame<Readable>,
+    object_detection_model: &Model,
+    face_detection_model: &Model,
+) -> Result<bool> {
+    //52-55 ms
+
+    let start_time = Instant::now();
+    let tensor = prepare_image(frame)?;
+
+    let (object_result, face_result) = std::thread::scope(|s| {
+        let object_handle = s.spawn(|| {
+            run(
+                object_detection_model.get_session(),
+                tensor.clone(),
+                1920,
+                1080,
+                640,
+                640,
+                Some(&[0]),
+            )
+        });
+
+        let face_handle = s.spawn(|| {
+            run(
+                face_detection_model.get_session(),
+                tensor.clone(),
+                1920,
+                1080,
+                640,
+                640,
+                Some(&[0]),
+            )
+        });
+
+        (object_handle.join().unwrap(), face_handle.join().unwrap())
+    });
+
+    let obj_detection = object_result?;
+    let face_detection = face_result?;
+
+    let duration = start_time.elapsed();
+    println!("Total time: {:?}", duration);
+
+    Ok(true)
 }
 
 fn detect_motion(frame: &VideoFrame<Readable>, motion: &mut Motion) -> Result<bool> {
@@ -83,7 +171,8 @@ fn detect_motion(frame: &VideoFrame<Readable>, motion: &mut Motion) -> Result<bo
 
 pub struct DetectionState {
     motion: Arc<Mutex<Motion>>,
-    model: Arc<RwLock<Model>>,
+    object_detection_model: Arc<RwLock<Model>>,
+    face_detection_model: Arc<RwLock<Model>>,
     mode: DetectionMode,
     frames_without_detection: usize,
     frames_without_motion: usize,
@@ -94,13 +183,15 @@ pub struct DetectionState {
 impl DetectionState {
     pub fn new(
         motion: Arc<Mutex<Motion>>,
-        model: Arc<RwLock<Model>>,
+        object_detection_model: Arc<RwLock<Model>>,
+        face_detection_model: Arc<RwLock<Model>>,
         detection_max_empty_frames: usize,
         motion_max_empty_frames: usize,
     ) -> Self {
         Self {
             motion,
-            model,
+            object_detection_model,
+            face_detection_model,
             mode: DetectionMode::ObjectsDetection,
             frames_without_detection: 0,
             frames_without_motion: 0,
@@ -112,8 +203,10 @@ impl DetectionState {
     pub fn process_frame(&mut self, frame: &VideoFrame<Readable>) -> Result<bool> {
         match self.mode {
             DetectionMode::ObjectsDetection => {
-                let model = self.model.read();
-                let detected = detect_objects(frame, &*model)?;
+                let object_detection_model = self.object_detection_model.read();
+                let face_detection_model = self.face_detection_model.read();
+                let detected =
+                    detect_objects(frame, &*object_detection_model, &*face_detection_model)?;
 
                 if detected {
                     self.frames_without_detection = 0;
@@ -138,8 +231,9 @@ impl DetectionState {
                     self.mode = DetectionMode::ObjectsDetection;
 
                     drop(motion);
-                    let model = self.model.read();
-                    return detect_objects(frame, &*model);
+                    let object_detection_model = self.object_detection_model.read();
+                    let face_detection_model = self.face_detection_model.read();
+                    return detect_objects(frame, &*object_detection_model, &*face_detection_model);
                 } else {
                     self.frames_without_motion += 1;
                     if self.frames_without_motion >= self.motion_max_empty_frames {

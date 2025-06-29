@@ -17,8 +17,13 @@ port = 5672
 user = "guest"
 password = "guest"
 
-[base_detection_model]
+[object_detection_model]
 path = "models/yolo11s.onnx"
+input_width = 640
+input_height = 640
+
+[face_detection_model]
+path = "models/yolov11s-face.onnx"
 input_width = 640
 input_height = 640
 
