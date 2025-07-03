@@ -3,3 +3,4 @@ pub mod pipeline_registry;
 pub mod video_processing;
 pub mod detection_state;
 pub mod ort_session;
+mod utils;

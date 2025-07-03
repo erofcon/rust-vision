@@ -177,7 +177,7 @@ fn handle_message(
 
         let inner_res: Result<(), anyhow::Error> = (|| async {
             let video_job = processing_job_repo
-                .get_video_job_by_id(&payload.id)
+                .get_video_job_by_id(&payload.video_job_id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Video job not found"))?;
 
@@ -185,6 +185,8 @@ fn handle_message(
                 cancelled = true;
                 return Ok(());
             }
+
+            // TODO: get camera presets from video_job.camera_presets_id and create common/Detectors
 
             processing_job_repo
                 .update_video_jobs_status(&video_job.id, ProcessingStatus::Processing)
@@ -210,7 +212,7 @@ fn handle_message(
             })?;
 
             let stop_flag = pipeline.get_stop_flag();
-            let cancel_rx = register_video_processing(payload.id, stop_flag.clone());
+            let cancel_rx = register_video_processing(payload.video_job_id, stop_flag.clone());
 
             let pipeline_handle = tokio::task::spawn_blocking(move || pipeline.run());
 
@@ -240,10 +242,10 @@ fn handle_message(
         };
 
         processing_job_repo
-            .update_video_jobs_status(&payload.id, final_status)
+            .update_video_jobs_status(&payload.video_job_id, final_status)
             .await?;
 
-        unregister_video_processing(&payload.id);
+        unregister_video_processing(&payload.video_job_id);
 
         inner_res
     })

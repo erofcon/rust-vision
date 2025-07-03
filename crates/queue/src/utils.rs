@@ -30,6 +30,7 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
+    // TODO: delete methods
     pub fn to_str(&self) -> &'static str {
         match self {
             TaskStatus::Uploaded => "uploaded",
@@ -54,7 +55,7 @@ impl TaskStatus {
 
 #[derive(Serialize, Deserialize)]
 pub struct Payload {
-    pub id: Uuid,
+    pub video_job_id: Uuid,
 }
 
 impl Payload {
