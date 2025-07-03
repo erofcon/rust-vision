@@ -19,6 +19,7 @@ lapin.workspace = true
 sqlx.workspace = true
 motion.workspace = true
 parking_lot.workspace = true
+face-recognition.workspace = true
 
 #refactor
 async-std = "1.13.1"

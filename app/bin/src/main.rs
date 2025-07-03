@@ -5,8 +5,8 @@ use anyhow::{Result, anyhow};
 use api::handlers::{day_map, health, organization, processing_job, publish};
 use common::config::ProjectConfig;
 use common::detection_state::DetectionState;
+use common::ort_session::Model;
 use common::pipeline_registry::{register_video_processing, unregister_video_processing};
-use detection::model::Model;
 use futures::future::BoxFuture;
 use gst_streaming::pipeline::GstPipeline;
 use gst_video::VideoFrame;
@@ -38,6 +38,10 @@ async fn main() -> Result<()> {
     let face_detection_model =
         Arc::new(RwLock::new(Model::new(&config.face_detection_model.path)?));
 
+    let face_recognition_model = Arc::new(RwLock::new(Model::new(
+        &config.face_recognition_model.path,
+    )?));
+
     println!("Models loaded and ready for shared access");
 
     // DB
@@ -58,6 +62,7 @@ async fn main() -> Result<()> {
         let db_pool_clone = db_pool.clone();
         let object_detection_model_clone = object_detection_model.clone();
         let face_detection_model_clone = face_detection_model.clone();
+        let face_recognition_model_clone = face_recognition_model.clone();
         let mut shutdown_rx = shutdown_tx.subscribe();
 
         tokio::spawn(async move {
@@ -67,6 +72,7 @@ async fn main() -> Result<()> {
                 db_pool_clone,
                 object_detection_model_clone,
                 face_detection_model_clone,
+                face_recognition_model_clone,
             )
             .await;
             tokio::select! {
@@ -127,6 +133,7 @@ pub async fn spawn_worker(
     db: Pool<Postgres>,
     object_detection_model: Arc<RwLock<Model>>,
     face_detection_model_clone: Arc<RwLock<Model>>,
+    face_recognition_model_clone: Arc<RwLock<Model>>,
 ) -> JoinHandle<()> {
     let mut consumer = Consumer::new(channel, QueueType::VideoProcessing)
         .await
@@ -138,11 +145,13 @@ pub async fn spawn_worker(
         let processing_job_repo_clone = processing_job_repo.clone();
         let object_detection_model_clone = object_detection_model.clone();
         let face_detection_model_clone = face_detection_model_clone.clone();
+        let face_recognition_model_clone = face_recognition_model_clone.clone();
         handle_message(
             data.to_vec(),
             processing_job_repo_clone,
             object_detection_model_clone,
             face_detection_model_clone,
+            face_recognition_model_clone,
             worker_id,
         )
     });
@@ -159,6 +168,7 @@ fn handle_message(
     processing_job_repo: ProcessingJobsRepository,
     object_detection_model: Arc<RwLock<Model>>,
     face_detection_model: Arc<RwLock<Model>>,
+    face_recognition_model: Arc<RwLock<Model>>,
     worker_id: usize,
 ) -> BoxFuture<'static, std::result::Result<(), anyhow::Error>> {
     Box::pin(async move {
@@ -186,6 +196,7 @@ fn handle_message(
                 motion,
                 object_detection_model,
                 face_detection_model,
+                face_recognition_model,
                 24,
                 300,
             )));

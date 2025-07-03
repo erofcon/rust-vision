@@ -61,6 +61,13 @@ pub struct FaceDetectionModel {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct FaceRecognitionModel {
+    pub path: String,
+    pub input_width: i32,
+    pub input_height: i32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Worker {
     pub worker_count: usize,
 }
@@ -72,6 +79,7 @@ pub struct ProjectConfig {
     pub mq: MQ,
     pub object_detection_model: ObjectDetectionModel,
     pub face_detection_model: FaceDetectionModel,
+    pub face_recognition_model: FaceRecognitionModel,
     pub worker: Worker,
 }
 

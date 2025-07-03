@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow.workspace = true
+ort.workspace = true
 gst-video.workspace = true
 opencv.workspace = true
 motion.workspace = true
@@ -12,6 +13,7 @@ detection.workspace = true
 parking_lot.workspace = true
 rayon.workspace = true
 ndarray.workspace = true
+face-recognition.workspace = true
 
 
 #refactor!
@@ -20,3 +22,10 @@ config = "0.15.11"
 tokio = "1.44.2"
 lazy_static = "1.5.0"
 uuid = { version = "1.16.0", features = ["v4"] }
+image = "0.25"
+fast_image_resize = "5.1.4"
+
+
+[features]
+load-dynamic = ["ort/load-dynamic"]
+cuda = ["ort/cuda"]

@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use image::{DynamicImage, Rgb};
-use imageproc::drawing::{draw_hollow_rect_mut, Canvas};
+use imageproc::drawing::{Canvas, draw_hollow_rect_mut};
 use imageproc::rect::Rect;
 use ndarray::parallel::prelude::IntoParallelIterator;
 use ndarray::{Array, Array4, Axis, IxDyn, s};
@@ -295,7 +295,6 @@ impl FaceRecognitionSystem {
     }
 
     pub fn extract_face_embedding(&self, input_tensor: Array4<f32>) -> Result<Vec<f32>> {
-
         let input = inputs!["input.1"=>input_tensor]?;
 
         let outputs = self.recognition_session.run(input)?;
@@ -334,7 +333,6 @@ impl FaceRecognitionSystem {
 
         dot_product / (norm1 * norm2)
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -373,7 +371,6 @@ impl FaceDatabase {
 
         let input_tensor = detections.preprocess_image_for_recognition(&crop_face)?;
 
-
         let emb = detections.extract_face_embedding(input_tensor)?;
 
         let person = DatabasePerson {
@@ -386,13 +383,9 @@ impl FaceDatabase {
         self.people.push(person);
         println!("Добавлен человек: {} (ID: {})", name, id);
 
-
         Ok(())
     }
-
-
 }
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -400,8 +393,8 @@ async fn main() -> Result<()> {
         FaceRecognitionSystem::new("models/yolov11s-face.onnx", "models/face-recognition.onnx")
             .await?;
 
-    let face = "assets/db.jpg";
-    let test = "assets/test4.jpg";
+    let face = "assets/vlcsnap-2025-06-29-21h58m35s488.png";
+    let test = "assets/vlcsnap-2025-06-29-21h59m17s958.png";
 
     let mut database = FaceDatabase::new();
 
@@ -429,9 +422,7 @@ async fn main() -> Result<()> {
         let sim = face_system.cosine_similarity(&emb, &database.people[0].face);
 
         println!("{:#?}", sim);
-
     }
-
 
     if !detections.is_empty() {
         face_system.draw_bounding_boxes(

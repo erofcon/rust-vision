@@ -10,7 +10,7 @@ opencv.workspace = true
 rayon.workspace = true
 ndarray.workspace = true
 ort.workspace = true
-
+image.workspace = true
 
 [features]
 load-dynamic = ["ort/load-dynamic"]

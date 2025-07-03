@@ -1,7 +1,6 @@
-target/*
-test_video/*
+target
 .idea/
-uploads/*
-assets/*
-output/*
+uploads
+output
+assets
 *.mp4

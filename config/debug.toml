@@ -27,5 +27,10 @@ path = "models/yolov11s-face.onnx"
 input_width = 640
 input_height = 640
 
+[face_recognition_model]
+path = "models/face-recognition.onnx"
+input_width = 160
+input_height = 160
+
 [worker]
-worker_count = 2
+worker_count = 1

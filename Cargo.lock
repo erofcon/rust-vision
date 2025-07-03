@@ -769,6 +769,7 @@ dependencies = [
  "async-std",
  "common",
  "detection",
+ "face-recognition",
  "futures",
  "gst-streaming",
  "gstreamer",
@@ -1057,11 +1058,15 @@ dependencies = [
  "anyhow",
  "config",
  "detection",
+ "face-recognition",
+ "fast_image_resize",
  "gstreamer-video",
+ "image",
  "lazy_static",
  "motion",
  "ndarray",
  "opencv",
+ "ort",
  "parking_lot",
  "rayon",
  "serde",
@@ -1391,6 +1396,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gstreamer-video",
+ "image",
  "ndarray",
  "opencv",
  "ort",
@@ -1434,6 +1440,15 @@ name = "doc-comment"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
+
+[[package]]
+name = "document-features"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95249b50c6c185bee49034bcb378a49dc2b5dff0be90ff6616d31d64febab05d"
+dependencies = [
+ "litrs",
+]
 
 [[package]]
 name = "dotenvy"
@@ -1548,6 +1563,8 @@ name = "face-recognition"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "detection",
+ "gstreamer-video",
  "image",
  "imageproc",
  "ndarray",
@@ -1555,6 +1572,18 @@ dependencies = [
  "rayon",
  "rusttype",
  "tokio",
+]
+
+[[package]]
+name = "fast_image_resize"
+version = "5.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d372ab3252d8f162d858d675a3d88a8c33ba24a6238837c50c8851911c7e89cd"
+dependencies = [
+ "cfg-if",
+ "document-features",
+ "num-traits",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2704,6 +2733,12 @@ name = "litemap"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
+
+[[package]]
+name = "litrs"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
 
 [[package]]
 name = "local-channel"

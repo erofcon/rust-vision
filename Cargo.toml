@@ -20,6 +20,7 @@ gst-pbutils = { package = "gstreamer-pbutils", version = "0.23.5" }
 tokio = "1.45.1"
 regex = "1.11.1"
 opencv = "0.94.4"
+image = "0.25"
 parking_lot = "0.12.3"
 rayon = "1.10.0"
 lapin = "2.5.3"
@@ -27,6 +28,7 @@ detection = { path = "crates/detection" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
 uuid = { version = "1.16.0", features = ["v4"] }
 ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
+
 
 api = { path = "crates/api" }
 common = { path = "crates/common" }
