@@ -28,7 +28,7 @@ detection = { path = "crates/detection" }
 ndarray = { version = "0.16.1", features = ["rayon"] }
 uuid = { version = "1.16.0", features = ["v4"] }
 ort = { version = "2.0.0-rc.9", features = ["ndarray", "cuda"] }
-
+cairo-rs = { version = "0.20.7" }
 
 api = { path = "crates/api" }
 common = { path = "crates/common" }

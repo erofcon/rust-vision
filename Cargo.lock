@@ -1940,6 +1940,7 @@ name = "gst-streaming"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cairo-rs",
  "common",
  "detection",
  "gstreamer",

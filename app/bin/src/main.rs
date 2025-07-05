@@ -8,6 +8,7 @@ use common::detection_state::DetectionState;
 use common::ort_session::Model;
 use common::pipeline_registry::{register_video_processing, unregister_video_processing};
 use common::utils::{Detectors, FaceModels};
+use detection::utils::BoundingBox;
 use futures::future::BoxFuture;
 use gst_streaming::pipeline::GstPipeline;
 use gst_video::VideoFrame;
@@ -233,11 +234,15 @@ fn handle_message(
 
             let detection_state_clone = detection_state.clone();
 
-            let mut pipeline = GstPipeline::new(&video_job.file_path, &rtmp_url, move |buffer| {
-                if let Err(e) = process_buffer(buffer, &detection_state_clone) {
-                    eprintln!("Error processing buffer: {}", e);
-                }
-            })?;
+            let mut pipeline = GstPipeline::new(
+                &video_job.file_path,
+                &rtmp_url,
+                move |buffer, bounding_box| {
+                    if let Err(e) = process_buffer(buffer, &detection_state_clone, bounding_box) {
+                        eprintln!("Error processing buffer: {}", e);
+                    }
+                },
+            )?;
 
             let stop_flag = pipeline.get_stop_flag();
             let cancel_rx = register_video_processing(payload.video_job_id, stop_flag.clone());
@@ -279,9 +284,13 @@ fn handle_message(
     })
 }
 
-fn process_buffer(buffer: &VideoFrame<Readable>, state: &Arc<Mutex<DetectionState>>) -> Result<()> {
+fn process_buffer(
+    buffer: &VideoFrame<Readable>,
+    state: &Arc<Mutex<DetectionState>>,
+    bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+) -> Result<()> {
     let mut state_guard = state.lock();
-    let _ = state_guard.process_frame(buffer)?;
+    let _ = state_guard.process_frame(buffer, bounding_box)?;
 
     Ok(())
 }

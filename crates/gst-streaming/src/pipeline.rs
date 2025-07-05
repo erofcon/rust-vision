@@ -6,6 +6,8 @@ use gst::prelude::{
 use gst::prelude::{ElementExtManual, GstBinExt};
 use std::any::type_name_of_val;
 
+use cairo::{Context as CairoContext, Rectangle};
+use detection::utils::BoundingBox;
 use gst::{
     Bin, Buffer, Caps, Element, ElementFactory, MessageView, PadProbeData, PadProbeReturn,
     PadProbeType, Pipeline, SeekFlags, SeekType, element_warning, glib,
@@ -14,21 +16,28 @@ use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::time::Duration;
+use parking_lot::{Mutex};
 
 pub struct GstPipeline {
     pipeline: Pipeline,
+    overlay: Element,
     should_stop: Arc<AtomicBool>,
+    bounding_box: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
 }
 
 impl GstPipeline {
     pub fn new(
         file_path: &str,
         rtmp_url: &str,
-        buffer_processor: impl Fn(&VideoFrame<Readable>) + Send + Sync + 'static,
+        buffer_processor: impl Fn(&VideoFrame<Readable>, &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>) + Send + Sync + 'static,
     ) -> Result<Self> {
         let pipeline = Pipeline::new();
+
+        let bounding_box = Arc::new(Mutex::new(Vec::new()));
+
+        let bounding_box_clone = Arc::clone(&bounding_box);
 
         // let file_info = discover::discover(&file_path)?;
 
@@ -75,7 +84,7 @@ impl GstPipeline {
                     .map_err(|_| gst::FlowError::Error)
                     .unwrap();
 
-                buffer_processor(&frame);
+                buffer_processor(&frame, &bounding_box_clone);
             }
 
             PadProbeReturn::Ok
@@ -122,12 +131,16 @@ impl GstPipeline {
 
         Ok(GstPipeline {
             pipeline,
+            overlay,
             should_stop: Arc::new(AtomicBool::new(false)),
+            bounding_box,
         })
     }
 
     pub fn run(&mut self) -> Result<()> {
         let should_stop = self.should_stop.clone();
+
+        self.draw();
 
         self.pipeline.set_state(gst::State::Playing)?;
 
@@ -167,30 +180,6 @@ impl GstPipeline {
                 }
             }
         }
-
-        // for msg in bus.iter_timed(gst::ClockTime::NONE) {
-        //     match msg.view() {
-        //         MessageView::Eos(..) => {
-        //             println!("EOS message received, finishing processing");
-        //             break;
-        //         }
-        //         MessageView::Error(err) => {
-        //             let error = err.error();
-        //             let debug = err.debug();
-        //             println!("Error: {}, debug: {:?}", error, debug);
-        //             return Err(anyhow!("GStreamer error: {}", error));
-        //         }
-        //         MessageView::StateChanged(state) => {
-        //             if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
-        //                 let old = state.old();
-        //                 let new = state.current();
-        //                 println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
-        //             }
-        //         }
-        //         _ => {}
-        //         _ => (),
-        //     }
-        // }
 
         self.pipeline.set_state(gst::State::Null)?;
         Ok(())
@@ -336,6 +325,32 @@ impl GstPipeline {
         Ok(())
     }
 
+    fn draw(&self) {
+        let bbox_arc = self.bounding_box.clone();
+        self.overlay.connect("draw", false, move |args| {
+            let context = args[1]
+                .get::<CairoContext>()
+                .expect("Invalid Cairo context in draw callback");
+
+            let boxes = bbox_arc.lock();
+
+            context.set_line_width(1.0);
+            context.set_source_rgb(1.0, 0.0, 0.0);
+
+            for (bb, _cls, _prob) in boxes.iter() {
+                let x = bb.x1 as f64;
+                let y = bb.y1 as f64;
+                let w = (bb.x2 - bb.x1) as f64;
+                let h = (bb.y2 - bb.y1) as f64;
+
+                context.rectangle(x, y, w, h);
+                context.stroke().unwrap();
+            }
+
+            None
+        });
+    }
+
     pub fn get_stop_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.should_stop)
     }
@@ -360,5 +375,9 @@ impl GstPipeline {
         self.pipeline.set_state(gst::State::Null)?;
 
         Ok(())
+    }
+
+    pub fn get_bounding_boxes(&self) -> Arc<Mutex<Vec<(BoundingBox, usize, f32)>>> {
+        Arc::clone(&self.bounding_box)
     }
 }
