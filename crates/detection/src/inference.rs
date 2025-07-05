@@ -8,61 +8,49 @@ use opencv::prelude::{MatTraitConst, MatTraitConstManual};
 use ort::inputs;
 use ort::session::Session;
 use rayon::prelude::*;
-use std::time::Instant;
 
-pub fn run(
+pub fn yolov11_inference(
     session: &Session,
     frame: Array<f32, ndarray::Dim<[usize; 4]>>,
-    original_img_width: i32,
-    original_img_height: i32,
-    model_input_width: i32,
-    model_input_height: i32,
-    out_classes: Option<&[usize]>,
-) -> Result<Vec<(BoundingBox, usize, f32)>> {
-    //
-    // let image = prepare_image(frame)?;
-
+) -> Result<Array<f32, IxDyn>> {
     let input = inputs!["images"=>frame]?;
 
-    // let start_time = Instant::now();
+    let outputs = session.run(input)?;
 
-    let output = {
-        let outputs = session.run(input)?;
-
-        outputs["output0"]
-            .try_extract_tensor::<f32>()?
-            .t()
-            .into_owned()
-    };
-
-    // let duration = start_time.elapsed();
-
-    // println!("{:?}", duration);
-
-    let out = process_output(
-        output,
-        original_img_width,
-        original_img_height,
-        model_input_width,
-        model_input_height,
-        out_classes,
-    );
-    //
-    out
+    Ok(outputs["output0"]
+        .try_extract_tensor::<f32>()?
+        .t()
+        .into_owned())
 }
 
+pub fn extract_face_embedding(session: &Session, input_tensor: Array4<f32>) -> Result<Vec<f32>> {
+    // only for current model (face-recognition.onnx). In the future, it is necessary to use universal method
+
+    let input = inputs!["input.1"=>input_tensor]?;
+
+    let outputs = session.run(input)?;
+
+    let embedding_array = outputs["1197"]
+        .try_extract_tensor::<f32>()?
+        .t()
+        .into_owned();
+
+    let embedding: Vec<f32> = embedding_array.into_iter().collect();
+
+    let norm = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let normalized_embedding: Vec<f32> = if norm > 0.0 {
+        embedding.iter().map(|x| x / norm).collect()
+    } else {
+        embedding
+    };
+
+    Ok(normalized_embedding)
+}
 
 pub fn process_output(
     output: Array<f32, IxDyn>,
-    original_img_width: i32,
-    original_img_height: i32,
-    model_input_width: i32,
-    model_input_height: i32,
     out_classes: Option<&[usize]>,
 ) -> Result<Vec<(BoundingBox, usize, f32)>> {
-    // let scale_x = original_img_width as f32 / model_input_width as f32;
-    // let scale_y = original_img_height as f32 / model_input_height as f32;
-
     let prob_threshold = 0.45;
     let iou_threshold = 0.7;
 
@@ -88,10 +76,6 @@ pub fn process_output(
                 }
             }
 
-            // let xc = row[0_usize] * scale_x;
-            // let yc = row[1_usize] * scale_y;
-            // let w = row[2_usize] * scale_x;
-            // let h = row[3_usize] * scale_y;
             let xc = row[0_usize];
             let yc = row[1_usize];
             let w = row[2_usize];
@@ -213,4 +197,50 @@ pub fn prepare_dynamic_image(
     let input = Array4::from_shape_vec((1, 3, height, width), flat_data)?;
 
     Ok(input)
+}
+
+pub fn preprocess_image_for_recognition(
+    image: &DynamicImage,
+) -> Result<Array4<f32>, Box<dyn std::error::Error>> {
+    let img_rgb = match image {
+        DynamicImage::ImageRgb8(rgb_img) => rgb_img,
+        _ => return Err("Expected RGB8 format".into()),
+    };
+
+    let (width, height) = img_rgb.dimensions();
+    let width = width as usize;
+    let height = height as usize;
+
+    let raw_data = img_rgb.as_raw();
+
+    let channel_size = width * height;
+    let total_size = 3 * channel_size;
+    let mut flat_data = vec![0.0f32; total_size];
+
+    let (r_channel, rest) = flat_data.split_at_mut(channel_size);
+    let (g_channel, b_channel) = rest.split_at_mut(channel_size);
+
+    let r_rows = r_channel.par_chunks_mut(width);
+    let g_rows = g_channel.par_chunks_mut(width);
+    let b_rows = b_channel.par_chunks_mut(width);
+
+    r_rows
+        .zip(g_rows)
+        .zip(b_rows)
+        .enumerate()
+        .for_each(|(y, ((r_row, g_row), b_row))| {
+            let row_offset = y * width * 3;
+
+            for x in 0..width {
+                let pixel_pos = row_offset + x * 3;
+
+                if pixel_pos + 2 < raw_data.len() {
+                    r_row[x] = (raw_data[pixel_pos] as f32 - 127.5) / 128.0;
+                    g_row[x] = (raw_data[pixel_pos + 1] as f32 - 127.5) / 128.0;
+                    b_row[x] = (raw_data[pixel_pos + 2] as f32 - 127.5) / 128.0;
+                }
+            }
+        });
+
+    Ok(Array4::from_shape_vec((1, 3, height, width), flat_data)?)
 }

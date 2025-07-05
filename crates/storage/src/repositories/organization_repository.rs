@@ -1,11 +1,13 @@
 use crate::models::organization::{
-    CameraPreset, CreateCameraPreset, CreateOrganization, Organization,
+    CameraPreset, CameraPresetDb, CreateCameraPreset, CreateOrganization, Organization,
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
+use serde_json::to_value;
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct OrganizationRepository {
     pool: Pool<Postgres>,
 }
@@ -48,24 +50,29 @@ impl OrganizationRepository {
         organization_id: &Uuid,
         camera: CreateCameraPreset,
     ) -> Result<CameraPreset> {
-        let result = sqlx::query_as(
+        let detectors_json = to_value(&camera.detectors)?;
+        let regions_json = to_value(&camera.regions)?;
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+
+        let record = sqlx::query_as::<_, CameraPresetDb>(
             r#"
-            INSERT INTO camera_presets (id, organization_id, camera_name, location, detectors, regions, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *
-            "#,
-        ).bind(
-            &Uuid::new_v4(),
-        ).bind(organization_id)
+        INSERT INTO camera_presets (id, organization_id, camera_name, location, detectors, regions, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
+        "#,
+        )
+            .bind(id)
+            .bind(organization_id)
             .bind(&camera.camera_name)
             .bind(&camera.location)
-            .bind(&camera.detectors)
-            .bind(&camera.regions)
-            .bind(Utc::now())
+            .bind(&detectors_json)
+            .bind(&regions_json)
+            .bind(now)
             .fetch_one(&self.pool)
             .await?;
 
-        Ok(result)
+        Ok(CameraPreset::try_from(record)?)
     }
 
     pub async fn list_organizations(&self) -> Result<Vec<Organization>> {
@@ -78,17 +85,26 @@ impl OrganizationRepository {
     }
 
     pub async fn list_camera_presets(&self, organization_id: &Uuid) -> Result<Vec<CameraPreset>> {
-        let result = sqlx::query_as(r#"SELECT * FROM camera_presets WHERE organization_id = $1"#)
-            .bind(organization_id)
-            .fetch_all(&self.pool)
-            .await
-            .context("Error to fetch list of camera_presets")?;
+        let records = sqlx::query_as::<_, CameraPresetDb>(
+            r#"
+        SELECT * FROM camera_presets
+        WHERE organization_id = $1
+        ORDER BY created_at DESC
+        "#,
+        )
+        .bind(organization_id)
+        .fetch_all(&self.pool)
+        .await?;
 
-        Ok(result)
+        let mut presets = Vec::with_capacity(records.len());
+        for record in records {
+            presets.push(CameraPreset::try_from(record)?);
+        }
+
+        Ok(presets)
     }
-
     pub async fn get_camera_preset_by_name(&self, name: &String) -> Result<Option<CameraPreset>> {
-        let result = sqlx::query_as(
+        let result = sqlx::query_as::<_, CameraPresetDb>(
             r#"
            SELECT * FROM camera_presets WHERE camera_name = $1
             "#,
@@ -97,6 +113,30 @@ impl OrganizationRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(result)
+        let mapped = match result {
+            Some(record) => Some(CameraPreset::try_from(record)?),
+            None => None,
+        };
+
+        Ok(mapped)
+    }
+
+    pub async fn get_camera_preset_by_id(&self, id: &Uuid) -> Result<Option<CameraPreset>> {
+        let result = sqlx::query_as::<_, CameraPresetDb>(
+            r#"
+        SELECT * FROM camera_presets WHERE id = $1
+        "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        // Преобразуем к финальной структуре
+        let mapped = match result {
+            Some(record) => Some(CameraPreset::try_from(record)?),
+            None => None,
+        };
+
+        Ok(mapped)
     }
 }

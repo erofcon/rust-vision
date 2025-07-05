@@ -1,22 +1,21 @@
-use crate::ort_session::Model;
-use anyhow::{Error, Result, anyhow};
-use detection::inference::{prepare_dynamic_image, run};
+use crate::utils::Detectors;
+use anyhow::{Result, anyhow};
+use detection::inference::{
+    extract_face_embedding, prepare_dynamic_image, preprocess_image_for_recognition,
+    process_output, yolov11_inference,
+};
 use detection::utils::{BoundingBox, convert_gst_image_to_dynamic};
 use face_recognition::face_recognition::*;
 use gst::prelude::*;
-use gst_video::gst::Buffer;
 use gst_video::video_frame::Readable;
-use gst_video::{VideoFormat, VideoFrame, VideoFrameExt, VideoInfo, gst};
-use image::{DynamicImage, ImageBuffer, Rgb, RgbImage};
+use gst_video::{VideoFormat, VideoFrame, VideoFrameExt, gst};
 use motion::motion::Motion;
-use ndarray::Array4;
 use opencv::core::{AlgorithmHint, CV_8UC3, CV_8UC4, Mat};
-use parking_lot::{Mutex, RwLock};
-use rayon::ThreadPoolBuilder;
+use parking_lot::Mutex;
+use rayon::join;
 use rayon::prelude::*;
-use std::sync::{Arc, mpsc};
-use std::{fs, thread};
-use tokio::runtime::Runtime;
+use std::sync::Arc;
+use tokio::io::AsyncReadExt;
 use tokio::time::Instant;
 
 type TaskResult = (&'static str, Result<()>);
@@ -36,7 +35,7 @@ fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
         .map_err(|e| anyhow!("Failed to get plane data: {:?}", e))?;
 
     let mat = match format {
-        gst_video::VideoFormat::Bgra => unsafe {
+        VideoFormat::Bgra => unsafe {
             let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
                 height,
                 width,
@@ -45,7 +44,7 @@ fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
             )?;
             mat.clone()
         },
-        gst_video::VideoFormat::Rgb => unsafe {
+        VideoFormat::Rgb => unsafe {
             let mat = Mat::new_rows_cols_with_data_unsafe_def(
                 height,
                 width,
@@ -63,7 +62,7 @@ fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
             )?;
             bgr_mat
         },
-        gst_video::VideoFormat::Bgr => unsafe {
+        VideoFormat::Bgr => unsafe {
             let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
                 height,
                 width,
@@ -80,200 +79,6 @@ fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
     Ok(mat)
 }
 
-fn detect_objects(
-    frame: &VideoFrame<Readable>,
-    object_detection_model: &Model,
-    face_detection_model: &Model,
-    face_recognition_model: &Model,
-) -> Result<bool> {
-    let start_time = Instant::now();
-
-    let image = convert_gst_image_to_dynamic(frame)?;
-    let duration = start_time.elapsed();
-
-    println!("{:?}", duration);
-
-    let tensor = prepare_dynamic_image(&image).unwrap();
-
-    // face detection
-
-    let results = run(
-        face_detection_model.get_session(),
-        tensor.clone(),
-        1920,
-        1080,
-        640,
-        640,
-        Some(&[0]),
-    )?;
-
-    if !results.is_empty() {
-        // recognition
-
-        let crop = crop_face(&image, &results[0].0)?;
-        let img = resize(&crop, 160, 160)?;
-
-        let prepare = preprocess_image_for_recognition(&img).unwrap();
-        let emb = extract_face_embedding(face_recognition_model.get_session(), prepare)?;
-
-        println!("Emb: {:?}", emb.len());
-        // let img_rgb = img.to_rgb8();
-
-        println!("Cropped");
-        crop.save("crop.png")?;
-        img.save("resized.png")?;
-    }
-
-    Ok(true)
-}
-
-// pub fn preprocess_image_for_recognition(
-//     image: &DynamicImage,
-// ) -> Result<Array4<f32>, Box<dyn std::error::Error>> {
-//     // Прямой доступ к RGB8 данным без копирования
-//     let img_rgb = match image {
-//         DynamicImage::ImageRgb8(rgb_img) => rgb_img,
-//         _ => return Err("Expected RGB8 format".into()),
-//     };
-//
-//     let raw_data = img_rgb.as_raw();
-//     let channel_size = 160 * 160;
-//     let total_size = 3 * channel_size;
-//     let mut flat_data = vec![0.0f32; total_size];
-//
-//     // Разделяем на каналы
-//     let (r_channel, rest) = flat_data.split_at_mut(channel_size);
-//     let (g_channel, b_channel) = rest.split_at_mut(channel_size);
-//
-//     // Параллельная обработка по строкам
-//     let r_rows = r_channel.par_chunks_mut(160);
-//     let g_rows = g_channel.par_chunks_mut(160);
-//     let b_rows = b_channel.par_chunks_mut(160);
-//
-//     r_rows
-//         .zip(g_rows)
-//         .zip(b_rows)
-//         .enumerate()
-//         .for_each(|(y, ((r_row, g_row), b_row))| {
-//             let row_offset = y * 160 * 3; // RGB данные идут подряд
-//
-//             for x in 0..160 {
-//                 let pixel_pos = row_offset + x * 3;
-//
-//                 if pixel_pos + 2 < raw_data.len() {
-//                     // Нормализация: (pixel - 127.5) / 128.0
-//                     r_row[x] = (raw_data[pixel_pos] as f32 - 127.5) / 128.0;
-//                     g_row[x] = (raw_data[pixel_pos + 1] as f32 - 127.5) / 128.0;
-//                     b_row[x] = (raw_data[pixel_pos + 2] as f32 - 127.5) / 128.0;
-//                 }
-//             }
-//         });
-//
-//     // Создаем массив с правильными размерами (1, 3, 160, 160)
-//     let input = Array4::from_shape_vec((1, 3, 160, 160), flat_data)?;
-//
-//     Ok(input)
-// }
-//
-// pub fn prepare_image_for_dynamic_image(
-//     image: &DynamicImage,
-// ) -> Result<Array4<f32>, Box<dyn std::error::Error>> {
-//     let img_rgb = match image {
-//         DynamicImage::ImageRgb8(rgb_img) => rgb_img,
-//         _ => return Err("Expected RGB8 format".into()),
-//     };
-//
-//     let (width, height) = img_rgb.dimensions();
-//     let width = width as usize;
-//     let height = height as usize;
-//
-//     // Получаем прямой доступ к сырым данным
-//     let raw_data = img_rgb.as_raw();
-//
-//     let channel_size = width * height;
-//     let total_size = 3 * channel_size;
-//     let mut flat_data = vec![0.0f32; total_size];
-//
-//     // Разделяем на каналы
-//     let (r_channel, rest) = flat_data.split_at_mut(channel_size);
-//     let (g_channel, b_channel) = rest.split_at_mut(channel_size);
-//
-//     // Параллельная обработка по строкам
-//     let r_rows = r_channel.par_chunks_mut(width);
-//     let g_rows = g_channel.par_chunks_mut(width);
-//     let b_rows = b_channel.par_chunks_mut(width);
-//
-//     r_rows
-//         .zip(g_rows)
-//         .zip(b_rows)
-//         .enumerate()
-//         .for_each(|(y, ((r_row, g_row), b_row))| {
-//             let row_offset = y * width * 3; // RGB данные идут подряд
-//
-//             for x in 0..width {
-//                 let pixel_pos = row_offset + x * 3;
-//
-//                 if pixel_pos + 2 < raw_data.len() {
-//                     r_row[x] = raw_data[pixel_pos] as f32 / 255.0;
-//                     g_row[x] = raw_data[pixel_pos + 1] as f32 / 255.0;
-//                     b_row[x] = raw_data[pixel_pos + 2] as f32 / 255.0;
-//                 }
-//             }
-//         });
-//
-//     // Создаем массив с правильными размерами (1, 3, height, width)
-//     let input = Array4::from_shape_vec((1, 3, height, width), flat_data)?;
-//
-//     Ok(input)
-// }
-//
-// fn detect_objects_v2(
-//     frame: &VideoFrame<Readable>,
-//     object_detection_model: &Model,
-//     face_detection_model: &Model,
-// ) -> Result<bool> {
-//     //52-55 ms
-//
-//     let start_time = Instant::now();
-//     let tensor = prepare_image(frame)?;
-//
-//     let (object_result, face_result) = std::thread::scope(|s| {
-//         let object_handle = s.spawn(|| {
-//             run(
-//                 object_detection_model.get_session(),
-//                 tensor.clone(),
-//                 1920,
-//                 1080,
-//                 640,
-//                 640,
-//                 Some(&[0]),
-//             )
-//         });
-//
-//         let face_handle = s.spawn(|| {
-//             run(
-//                 face_detection_model.get_session(),
-//                 tensor.clone(),
-//                 1920,
-//                 1080,
-//                 640,
-//                 640,
-//                 Some(&[0]),
-//             )
-//         });
-//
-//         (object_handle.join().unwrap(), face_handle.join().unwrap())
-//     });
-//
-//     let obj_detection = object_result?;
-//     let face_detection = face_result?;
-//
-//     let duration = start_time.elapsed();
-//     println!("Total time: {:?}", duration);
-//
-//     Ok(true)
-// }
-
 fn detect_motion(frame: &VideoFrame<Readable>, motion: &mut Motion) -> Result<bool> {
     println!("Detecting motion ...");
     let mat = video_frame_to_mat(frame)?;
@@ -283,9 +88,7 @@ fn detect_motion(frame: &VideoFrame<Readable>, motion: &mut Motion) -> Result<bo
 
 pub struct DetectionState {
     motion: Arc<Mutex<Motion>>,
-    object_detection_model: Arc<RwLock<Model>>,
-    face_detection_model: Arc<RwLock<Model>>,
-    face_recognition_model: Arc<RwLock<Model>>,
+    detectors: Detectors,
     mode: DetectionMode,
     frames_without_detection: usize,
     frames_without_motion: usize,
@@ -296,17 +99,13 @@ pub struct DetectionState {
 impl DetectionState {
     pub fn new(
         motion: Arc<Mutex<Motion>>,
-        object_detection_model: Arc<RwLock<Model>>,
-        face_detection_model: Arc<RwLock<Model>>,
-        face_recognition_model: Arc<RwLock<Model>>,
+        detectors: Detectors,
         detection_max_empty_frames: usize,
         motion_max_empty_frames: usize,
     ) -> Self {
         Self {
             motion,
-            object_detection_model,
-            face_detection_model,
-            face_recognition_model,
+            detectors,
             mode: DetectionMode::ObjectsDetection,
             frames_without_detection: 0,
             frames_without_motion: 0,
@@ -318,16 +117,7 @@ impl DetectionState {
     pub fn process_frame(&mut self, frame: &VideoFrame<Readable>) -> Result<bool> {
         match self.mode {
             DetectionMode::ObjectsDetection => {
-                let object_detection_model = self.object_detection_model.read();
-                let face_detection_model = self.face_detection_model.read();
-                let face_recognition_model = self.face_recognition_model.read();
-
-                let detected = detect_objects(
-                    frame,
-                    &*object_detection_model,
-                    &*face_detection_model,
-                    &*face_recognition_model,
-                )?;
+                let detected = self.detect_objects(frame)?;
 
                 if detected {
                     self.frames_without_detection = 0;
@@ -352,15 +142,7 @@ impl DetectionState {
                     self.mode = DetectionMode::ObjectsDetection;
 
                     drop(motion);
-                    let object_detection_model = self.object_detection_model.read();
-                    let face_detection_model = self.face_detection_model.read();
-                    let face_recognition_model = self.face_recognition_model.read();
-                    return detect_objects(
-                        frame,
-                        &*object_detection_model,
-                        &*face_detection_model,
-                        &*face_recognition_model,
-                    );
+                    return self.detect_objects(frame);
                 } else {
                     self.frames_without_motion += 1;
                     if self.frames_without_motion >= self.motion_max_empty_frames {
@@ -373,5 +155,115 @@ impl DetectionState {
                 Ok(false)
             }
         }
+    }
+
+    fn detect_objects_base(&self, frame: &VideoFrame<Readable>) -> Result<bool> {
+        let mut has_detection = false;
+        let image = convert_gst_image_to_dynamic(frame)?;
+
+        let prepare = prepare_dynamic_image(&image).unwrap();
+
+        if let Some(person_model) = &self.detectors.person {
+            let model = person_model.read();
+            let inference = yolov11_inference(model.get_session(), prepare.clone())?;
+
+            let results = process_output(inference, Some(&[0_usize]))?;
+
+            has_detection = !results.is_empty();
+        }
+
+        if let Some(face_models) = &self.detectors.face {
+            let mut faces = Vec::new();
+
+            {
+                let detection_model = face_models.detection.read();
+                let inference = yolov11_inference(detection_model.get_session(), prepare)?;
+
+                faces = process_output(inference, None)?;
+            }
+            {
+                if !faces.is_empty() {
+                    let recognition_model = face_models.recognition.read();
+                    for (bbox, _class_id, _prob) in faces.iter() {
+                        let crop = crop_face(&image, bbox)?;
+                        let img = resize(&crop, 160, 160)?;
+                        let prepare = preprocess_image_for_recognition(&img).unwrap();
+
+                        let _emb =
+                            extract_face_embedding(recognition_model.get_session(), prepare)?;
+                    }
+                }
+            }
+        }
+
+        Ok(has_detection)
+    }
+
+    fn detect_objects(&self, frame: &VideoFrame<Readable>) -> Result<bool> {
+        let start = Instant::now();
+
+        let image = convert_gst_image_to_dynamic(frame)?;
+        let prepared = prepare_dynamic_image(&image)
+            .map_err(|e| anyhow!("prepare_dynamic_image failed: {:?}", e))?;
+
+        let (persons_res, faces_res): (
+            Result<Vec<(BoundingBox, usize, f32)>>,
+            Result<Vec<(BoundingBox, usize, f32)>>,
+        ) = join(
+            || -> Result<Vec<(BoundingBox, usize, f32)>> {
+                if let Some(person_model) = &self.detectors.person {
+                    let model_guard = person_model.read();
+                    let session = model_guard.get_session();
+
+                    let inf = yolov11_inference(session, prepared.clone())?;
+                    let persons = process_output(inf, Some(&[0_usize]))?;
+
+                    Ok(persons)
+                } else {
+                    Ok(Vec::new())
+                }
+            },
+            || -> Result<Vec<(BoundingBox, usize, f32)>> {
+                if let Some(face_models) = &self.detectors.face {
+                    let det_guard = face_models.detection.read();
+                    let det_session = det_guard.get_session();
+
+                    let inf = yolov11_inference(det_session, prepared.clone())?;
+                    let faces = process_output(inf, None)?;
+
+                    Ok(faces)
+                } else {
+                    Ok(Vec::new())
+                }
+            },
+        );
+
+        let persons = persons_res?;
+        let faces = faces_res?;
+
+        let face_embeddings: Vec<_> = if let Some(face_models) = &self.detectors.face {
+            let rec_guard = face_models.recognition.read();
+            let rec_session = rec_guard.get_session();
+
+            faces
+                .par_iter()
+                .filter_map(|(bbox, _class, _prob)| crop_face(&image, bbox).ok())
+                .map(|crop| {
+                    // TODO: get WxH from config
+                    let img = resize(&crop, 160, 160)?;
+                    let prep = preprocess_image_for_recognition(&img)
+                        .map_err(|e| anyhow!("prep failed: {:?}", e))?;
+                    extract_face_embedding(rec_session, prep)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let duration = start.elapsed();
+
+        println!("Time elapsed in detect_objects is: {:?}", duration);
+
+        Ok(!persons.is_empty())
     }
 }

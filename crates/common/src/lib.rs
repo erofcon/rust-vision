@@ -1,6 +1,6 @@
 pub mod config;
-pub mod pipeline_registry;
-pub mod video_processing;
 pub mod detection_state;
 pub mod ort_session;
-mod utils;
+pub mod pipeline_registry;
+pub mod utils;
+pub mod video_processing;

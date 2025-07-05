@@ -7,6 +7,7 @@ use common::config::ProjectConfig;
 use common::detection_state::DetectionState;
 use common::ort_session::Model;
 use common::pipeline_registry::{register_video_processing, unregister_video_processing};
+use common::utils::{Detectors, FaceModels};
 use futures::future::BoxFuture;
 use gst_streaming::pipeline::GstPipeline;
 use gst_video::VideoFrame;
@@ -19,7 +20,9 @@ use queue::utils::{Payload, QueueType};
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use storage::database::Database;
+use storage::models::organization::DetectorType;
 use storage::models::processing_job::ProcessingStatus;
+use storage::repositories::organization_repository::OrganizationRepository;
 use storage::repositories::processing_jobs_repository::ProcessingJobsRepository;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
@@ -139,16 +142,19 @@ pub async fn spawn_worker(
         .await
         .expect("Failed to create consumer");
 
-    let processing_job_repo = ProcessingJobsRepository::new(db);
+    let processing_job_repo = ProcessingJobsRepository::new(db.clone());
+    let organization_repo = OrganizationRepository::new(db);
 
     consumer.set_handler(move |data, _routing| {
         let processing_job_repo_clone = processing_job_repo.clone();
+        let organization_repo_clone = organization_repo.clone();
         let object_detection_model_clone = object_detection_model.clone();
         let face_detection_model_clone = face_detection_model_clone.clone();
         let face_recognition_model_clone = face_recognition_model_clone.clone();
         handle_message(
             data.to_vec(),
             processing_job_repo_clone,
+            organization_repo_clone,
             object_detection_model_clone,
             face_detection_model_clone,
             face_recognition_model_clone,
@@ -166,6 +172,7 @@ pub async fn spawn_worker(
 fn handle_message(
     data: Vec<u8>,
     processing_job_repo: ProcessingJobsRepository,
+    organization_repo: OrganizationRepository,
     object_detection_model: Arc<RwLock<Model>>,
     face_detection_model: Arc<RwLock<Model>>,
     face_recognition_model: Arc<RwLock<Model>>,
@@ -186,7 +193,30 @@ fn handle_message(
                 return Ok(());
             }
 
-            // TODO: get camera presets from video_job.camera_presets_id and create common/Detectors
+            let camera_presets = organization_repo
+                .get_camera_preset_by_id(&video_job.camera_presets_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("CameraPreset not found"))?;
+
+            if camera_presets.detectors.is_empty() {
+                return Err(anyhow::anyhow!("Detectors not found"));
+            }
+
+            let detectors_struct = Detectors {
+                face: if camera_presets.detectors.contains(&DetectorType::Face) {
+                    Some(FaceModels {
+                        detection: face_detection_model,
+                        recognition: face_recognition_model,
+                    })
+                } else {
+                    None
+                },
+                person: if camera_presets.detectors.contains(&DetectorType::Person) {
+                    Some(object_detection_model)
+                } else {
+                    None
+                },
+            };
 
             processing_job_repo
                 .update_video_jobs_status(&video_job.id, ProcessingStatus::Processing)
@@ -196,9 +226,7 @@ fn handle_message(
             let motion = Arc::new(Mutex::new(Motion::new()?));
             let detection_state = Arc::new(Mutex::new(DetectionState::new(
                 motion,
-                object_detection_model,
-                face_detection_model,
-                face_recognition_model,
+                detectors_struct,
                 24,
                 300,
             )));

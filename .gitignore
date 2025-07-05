@@ -1,6 +1,8 @@
-target
+target/*
 .idea/
-uploads
-output
-assets
+uploads/*
+output/*
+assets/*
 *.mp4
+*.png
+*.jpeg
