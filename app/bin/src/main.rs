@@ -19,6 +19,7 @@ use queue::connection::MQ;
 use queue::consumer::Consumer;
 use queue::utils::{Payload, QueueType};
 use sqlx::{Pool, Postgres};
+use std::path::Path;
 use std::sync::Arc;
 use storage::database::Database;
 use storage::models::organization::DetectorType;
@@ -27,12 +28,29 @@ use storage::repositories::organization_repository::OrganizationRepository;
 use storage::repositories::processing_jobs_repository::ProcessingJobsRepository;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
+use vision::face_database::FaceDatabase;
 
 #[actix_web::main]
 async fn main() -> Result<()> {
     let config = ProjectConfig::load()?;
 
     gst::init()?;
+
+    let face_db_file = &config.face_database.db_file;
+    let face_db = &config.face_database.path;
+
+    let face_database = if Path::new(face_db_file).exists() {
+        println!("Loading sources from the file...");
+        Arc::new(RwLock::new(FaceDatabase::load_from_file(face_db)?))
+    } else {
+        println!("We build a database from folders...");
+        let mut db = FaceDatabase::new();
+
+        db.load_from_folder().await?;
+        db.save_to_file(face_db_file)?;
+
+        Arc::new(RwLock::new(db))
+    };
 
     // models
     let object_detection_model = Arc::new(RwLock::new(Model::new(
@@ -67,6 +85,7 @@ async fn main() -> Result<()> {
         let object_detection_model_clone = object_detection_model.clone();
         let face_detection_model_clone = face_detection_model.clone();
         let face_recognition_model_clone = face_recognition_model.clone();
+        let face_database_clone = face_database.clone();
         let mut shutdown_rx = shutdown_tx.subscribe();
 
         tokio::spawn(async move {
@@ -77,6 +96,7 @@ async fn main() -> Result<()> {
                 object_detection_model_clone,
                 face_detection_model_clone,
                 face_recognition_model_clone,
+                face_database_clone,
             )
             .await;
             tokio::select! {
@@ -138,6 +158,7 @@ pub async fn spawn_worker(
     object_detection_model: Arc<RwLock<Model>>,
     face_detection_model_clone: Arc<RwLock<Model>>,
     face_recognition_model_clone: Arc<RwLock<Model>>,
+    face_database_clone: Arc<RwLock<FaceDatabase>>,
 ) -> JoinHandle<()> {
     let mut consumer = Consumer::new(channel, QueueType::VideoProcessing)
         .await
@@ -152,6 +173,8 @@ pub async fn spawn_worker(
         let object_detection_model_clone = object_detection_model.clone();
         let face_detection_model_clone = face_detection_model_clone.clone();
         let face_recognition_model_clone = face_recognition_model_clone.clone();
+        let face_database_clone = face_database_clone.clone();
+
         handle_message(
             data.to_vec(),
             processing_job_repo_clone,

@@ -14,11 +14,11 @@ use gst::{
 };
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
+use parking_lot::Mutex;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc};
 use std::time::Duration;
-use parking_lot::{Mutex};
 
 pub struct GstPipeline {
     pipeline: Pipeline,
@@ -31,7 +31,10 @@ impl GstPipeline {
     pub fn new(
         file_path: &str,
         rtmp_url: &str,
-        buffer_processor: impl Fn(&VideoFrame<Readable>, &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>) + Send + Sync + 'static,
+        buffer_processor: impl Fn(&VideoFrame<Readable>, &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>)
+        + Send
+        + Sync
+        + 'static,
     ) -> Result<Self> {
         let pipeline = Pipeline::new();
 

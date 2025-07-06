@@ -393,8 +393,8 @@ async fn main() -> Result<()> {
         FaceRecognitionSystem::new("models/yolov11s-face.onnx", "models/face-recognition.onnx")
             .await?;
 
-    let face = "assets/vlcsnap-2025-06-29-21h58m35s488.png";
-    let test = "assets/vlcsnap-2025-06-29-21h59m17s958.png";
+    let face = r"assets/face_database/card_1/img_2.png";
+    let test = r"assets/face_database/card_1/img_2.png";
 
     let mut database = FaceDatabase::new();
 

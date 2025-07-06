@@ -15,7 +15,7 @@ ort.workspace = true
 rayon.workspace = true
 gst-video.workspace = true
 detection.workspace = true
-
+serde.workspace = true
 
 [features]
 load-dynamic = ["ort/load-dynamic"]

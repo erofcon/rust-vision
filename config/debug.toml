@@ -32,5 +32,11 @@ path = "models/face-recognition.onnx"
 input_width = 160
 input_height = 160
 
+[face_database]
+path = "assets/face_database"
+db_file = "assets/face_database.json"
+
 [worker]
 worker_count = 1
+
+

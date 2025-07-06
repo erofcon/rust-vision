@@ -114,7 +114,11 @@ impl DetectionState {
         }
     }
 
-    pub fn process_frame(&mut self, frame: &VideoFrame<Readable>, bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>) -> Result<bool> {
+    pub fn process_frame(
+        &mut self,
+        frame: &VideoFrame<Readable>,
+        bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+    ) -> Result<bool> {
         match self.mode {
             DetectionMode::ObjectsDetection => {
                 let detected = self.detect_objects(frame, bounding_box)?;
@@ -199,7 +203,11 @@ impl DetectionState {
         Ok(has_detection)
     }
 
-    fn detect_objects(&self, frame: &VideoFrame<Readable>, bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>) -> Result<bool> {
+    fn detect_objects(
+        &self,
+        frame: &VideoFrame<Readable>,
+        bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+    ) -> Result<bool> {
         let start = Instant::now();
 
         let image = convert_gst_image_to_dynamic(frame)?;
@@ -259,8 +267,6 @@ impl DetectionState {
         } else {
             Vec::new()
         };
-
-
 
         let mut boxes = bounding_box.lock();
 

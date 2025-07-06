@@ -68,6 +68,12 @@ pub struct FaceRecognitionModel {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct FaceDatabase {
+    pub path: String,
+    pub db_file: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Worker {
     pub worker_count: usize,
 }
@@ -80,6 +86,7 @@ pub struct ProjectConfig {
     pub object_detection_model: ObjectDetectionModel,
     pub face_detection_model: FaceDetectionModel,
     pub face_recognition_model: FaceRecognitionModel,
+    pub face_database: FaceDatabase,
     pub worker: Worker,
 }
 
