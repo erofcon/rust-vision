@@ -183,17 +183,31 @@ impl DetectionState {
                         for person in &face_database.people {
                             let mut max_similarity = 0.0f32;
 
-                            for person_embedding in &person.emb {
-                                match Detectors::cosine_similarity(face_embedding, person_embedding)
-                                {
-                                    Ok(similarity) => {
-                                        if similarity > max_similarity {
-                                            max_similarity = similarity;
-                                        }
+                            // for person_embedding in &person.emb {
+                            //     match Detectors::cosine_similarity(face_embedding, person_embedding)
+                            //     {
+                            //         Ok(similarity) => {
+                            //             if similarity > max_similarity {
+                            //                 max_similarity = similarity;
+                            //             }
+                            //         }
+                            //         Err(e) => {
+                            //             println!("Error to cosine_similarity : {:?}", e);
+                            //         }
+                            //     }
+                            // }
+
+                            match Detectors::cosine_similarity(
+                                face_embedding,
+                                &person.get_best_embedding(),
+                            ) {
+                                Ok(similarity) => {
+                                    if similarity > max_similarity {
+                                        max_similarity = similarity;
                                     }
-                                    Err(e) => {
-                                        println!("Error to cosine_similarity : {:?}", e);
-                                    }
+                                }
+                                Err(e) => {
+                                    println!("Error to cosine_similarity : {:?}", e);
                                 }
                             }
 

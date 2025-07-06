@@ -61,10 +61,11 @@ impl GstPipeline {
         */
 
         let caps = Caps::builder(glib::gstr!("video/x-raw"))
-            .field("format", gst_video::VideoFormat::Bgr.to_str())
+            .field("format", gst_video::VideoFormat::Rgb.to_str())
             .field("width", 640)
             .field("height", 640)
             .build();
+
         let caps_filter = ElementFactory::make_with_name("capsfilter", None)?;
         caps_filter.set_property("caps", &caps);
 
