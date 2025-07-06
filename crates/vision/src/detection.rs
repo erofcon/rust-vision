@@ -3,7 +3,6 @@ use crate::utils::BoundingBox;
 use anyhow::Result;
 use image::DynamicImage;
 use ndarray::{Array, Array4, IxDyn};
-use ort::inputs;
 use ort::session::Session;
 use parking_lot::RwLock;
 use std::sync::Arc;

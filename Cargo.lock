@@ -1948,6 +1948,7 @@ dependencies = [
  "gstreamer",
  "gstreamer-pbutils",
  "gstreamer-video",
+ "inference-core",
  "motion",
  "parking_lot",
  "storage",
@@ -2508,6 +2509,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "inference-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "common",
+ "gstreamer-video",
+ "image",
+ "motion",
+ "ndarray",
+ "once_cell",
+ "opencv",
+ "ort",
+ "parking_lot",
+ "project-config",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3053,9 +3075,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.21.0"
+version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cde51589ab56b20a6f686b2c68f7a0bd6add753d697abf720d63f8db3ab7b1ad"
+checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
 name = "opencv"
@@ -3504,6 +3526,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "project-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "config",
+ "once_cell",
+ "serde",
+]
+
+[[package]]
 name = "qoi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3517,16 +3549,11 @@ name = "queue"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-std",
- "async-trait",
  "bincode",
- "common",
  "futures-util",
  "lapin",
+ "project-config",
  "serde",
- "serde_json",
- "streaming",
- "thiserror 2.0.12",
  "tokio",
  "uuid",
 ]
@@ -3823,6 +3850,31 @@ dependencies = [
  "cfg-if",
  "ordered-multimap",
  "trim-in-place",
+]
+
+[[package]]
+name = "rust-vision-bin"
+version = "0.1.0"
+dependencies = [
+ "actix-cors",
+ "actix-web",
+ "anyhow",
+ "api",
+ "common",
+ "futures",
+ "gst-streaming",
+ "gstreamer",
+ "gstreamer-video",
+ "inference-core",
+ "lapin",
+ "motion",
+ "once_cell",
+ "parking_lot",
+ "project-config",
+ "queue",
+ "sqlx",
+ "storage",
+ "tokio",
 ]
 
 [[package]]
@@ -4473,6 +4525,8 @@ dependencies = [
  "anyhow",
  "chrono",
  "common",
+ "once_cell",
+ "project-config",
  "serde",
  "serde_json",
  "sqlx",
@@ -5010,7 +5064,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "common",
- "futures",
  "image",
  "ndarray",
  "ort",

@@ -5,3 +5,4 @@ mod prepare;
 mod inference;
 mod utils;
 mod output;
+mod globals;

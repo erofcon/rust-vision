@@ -1,5 +1,5 @@
 [package]
-name = "vision"
+name = "inference-core"
 version = "0.1.0"
 edition = "2024"
 
@@ -14,6 +14,11 @@ tokio.workspace = true
 image.workspace = true
 ndarray.workspace = true
 rayon.workspace = true
+once_cell.workspace = true
+project-config.workspace = true
+gst-video.workspace = true
+opencv.workspace = true
+motion.workspace = true
 
 
 [features]

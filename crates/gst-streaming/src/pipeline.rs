@@ -7,7 +7,7 @@ use gst::prelude::{ElementExtManual, GstBinExt};
 use std::any::type_name_of_val;
 
 use cairo::{Context as CairoContext, Rectangle};
-use detection::utils::BoundingBox;
+use inference_core::utils::BoundingBox;
 use gst::{
     Bin, Buffer, Caps, Element, ElementFactory, MessageView, PadProbeData, PadProbeReturn,
     PadProbeType, Pipeline, SeekFlags, SeekType, element_warning, glib,

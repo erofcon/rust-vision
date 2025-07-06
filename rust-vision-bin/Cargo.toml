@@ -1,0 +1,25 @@
+[package]
+name = "rust-vision-bin"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+actix-web.workspace = true
+actix-cors.workspace = true
+api.workspace = true
+once_cell.workspace = true
+project-config.workspace = true
+storage.workspace = true
+inference-core.workspace = true
+gst.workspace = true
+gst-video.workspace = true
+queue.workspace = true
+tokio.workspace = true
+lapin.workspace = true
+sqlx.workspace = true
+futures.workspace = true
+parking_lot.workspace = true
+motion.workspace = true
+common.workspace = true
+gst-streaming.workspace = true
