@@ -1,83 +1,25 @@
 use crate::detectors::{Detectors, Inference, Output, Prepare};
+use crate::globals::FACE_DATABASE;
 use crate::utils::BoundingBox;
-
 use anyhow::{Result, anyhow};
-
 use gst::prelude::*;
 use gst_video::video_frame::Readable;
-use gst_video::{VideoFormat, VideoFrame, VideoFrameExt, gst};
+use gst_video::{VideoFrame, VideoFrameExt, gst};
 use motion::motion::Motion;
-use opencv::core::{AlgorithmHint, CV_8UC3, CV_8UC4, Mat};
 use parking_lot::Mutex;
 use rayon::join;
 use rayon::prelude::*;
 use std::sync::Arc;
 use tokio::time::Instant;
 
-type TaskResult = (&'static str, Result<()>);
-
 enum DetectionMode {
     ObjectsDetection,
     MotionDetection,
 }
 
-fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
-    let width = frame.width() as i32;
-    let height = frame.height() as i32;
-    let format = frame.format();
-
-    let data = frame
-        .plane_data(0)
-        .map_err(|e| anyhow!("Failed to get plane data: {:?}", e))?;
-
-    let mat = match format {
-        VideoFormat::Bgra => unsafe {
-            let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
-                height,
-                width,
-                CV_8UC4,
-                data.as_ptr() as *mut _,
-            )?;
-            mat.clone()
-        },
-        VideoFormat::Rgb => unsafe {
-            let mat = Mat::new_rows_cols_with_data_unsafe_def(
-                height,
-                width,
-                CV_8UC3,
-                data.as_ptr() as *mut _,
-            )?;
-
-            let mut bgr_mat = Mat::default();
-            opencv::imgproc::cvt_color(
-                &mat,
-                &mut bgr_mat,
-                opencv::imgproc::COLOR_RGB2BGR,
-                0,
-                AlgorithmHint::ALGO_HINT_DEFAULT,
-            )?;
-            bgr_mat
-        },
-        VideoFormat::Bgr => unsafe {
-            let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
-                height,
-                width,
-                CV_8UC3,
-                data.as_ptr() as *mut _,
-            )?;
-            mat.clone()
-        },
-        _ => {
-            return Err(anyhow!("Unsupported video format: {:?}", format));
-        }
-    };
-
-    Ok(mat)
-}
-
 fn detect_motion(frame: &VideoFrame<Readable>, motion: &mut Motion) -> Result<bool> {
-    println!("Detecting motion ...");
-    let mat = video_frame_to_mat(frame)?;
+    // println!("Detecting motion ...");
+    let mat = Detectors::video_frame_to_mat(frame)?;
     let result = motion.predict(mat)?;
     Ok(result)
 }
@@ -179,8 +121,13 @@ impl DetectionState {
                     let session = person_model.get_session();
 
                     let inf = Detectors::yolo11_inference(session, prepared.clone())?;
-                    let persons =
-                        Detectors::process_yolo11s_output(inf, 640f32, 640f32, Some(&[0_usize]))?;
+                    let persons = Detectors::process_yolo11s_output(
+                        inf,
+                        640f32,
+                        640f32,
+                        None,
+                        Some(&[0_usize]),
+                    )?;
 
                     Ok(persons)
                 } else {
@@ -194,7 +141,8 @@ impl DetectionState {
 
                     let inf = Detectors::yolo11_inference(det_session, prepared.clone())?;
 
-                    let faces = Detectors::process_yolo11s_output(inf, 640f32, 640f32, None)?;
+                    let faces =
+                        Detectors::process_yolo11s_output(inf, 640f32, 640f32, Some(0.6), None)?;
 
                     Ok(faces)
                 } else {
@@ -204,7 +152,7 @@ impl DetectionState {
         );
 
         let persons = persons_res?;
-        let faces = faces_res?;
+        let mut faces = faces_res?;
 
         let face_embeddings: Vec<_> = if let Some(face_models) = &self.detectors.face {
             let model_session = face_models.recognition.get_session();
@@ -223,6 +171,70 @@ impl DetectionState {
             Vec::new()
         };
 
+        if !face_embeddings.is_empty() {
+            let face_database = &FACE_DATABASE;
+
+            for (face_idx, face_embedding_result) in face_embeddings.iter().enumerate() {
+                match face_embedding_result {
+                    Ok(face_embedding) => {
+                        let mut best_match: Option<(String, f32)> = None;
+                        let similarity_threshold = 0.6;
+
+                        for person in &face_database.people {
+                            let mut max_similarity = 0.0f32;
+
+                            for person_embedding in &person.emb {
+                                match Detectors::cosine_similarity(face_embedding, person_embedding)
+                                {
+                                    Ok(similarity) => {
+                                        if similarity > max_similarity {
+                                            max_similarity = similarity;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        println!("Error to cosine_similarity : {:?}", e);
+                                    }
+                                }
+                            }
+
+                            if max_similarity > similarity_threshold {
+                                match &best_match {
+                                    Some((_, current_best_similarity)) => {
+                                        if max_similarity > *current_best_similarity {
+                                            best_match =
+                                                Some((person.name.clone(), max_similarity));
+                                        }
+                                    }
+                                    None => {
+                                        best_match = Some((person.name.clone(), max_similarity));
+                                    }
+                                }
+                            }
+                        }
+
+                        match best_match {
+                            Some((name, similarity)) => {
+                                faces[face_idx].0.label =
+                                    Some(format!("{} ({:.0}%)", name, similarity * 100.0));
+                                // println!(
+                                //     "Face {} recognized how: {} (cosine_similarity: {:.2}%)",
+                                //     face_idx,
+                                //     name,
+                                //     similarity * 100.0
+                                // );
+                            }
+                            None => {
+                                // println!("Face {} not recognized", face_idx);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error to get face embedding {}: {:?}", face_idx, e);
+                    }
+                }
+            }
+        }
+
         let mut boxes = bounding_box.lock();
 
         boxes.clear();
@@ -232,7 +244,7 @@ impl DetectionState {
 
         let duration = start.elapsed();
 
-        println!("Time elapsed in detect_objects is: {:?}", duration);
+        // println!("Time elapsed in detect_objects is: {:?}", duration);
 
         Ok(!persons.is_empty())
     }

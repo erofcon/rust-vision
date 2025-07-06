@@ -1,10 +1,11 @@
 use crate::detectors::{Detectors, Prepare};
 use crate::utils::{BoundingBox, img_to_rgb8};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use gst_video::video_frame::Readable;
-use gst_video::{VideoFrame, VideoFrameExt};
+use gst_video::{VideoFormat, VideoFrame, VideoFrameExt};
 use image::{DynamicImage, ImageBuffer, Rgb};
 use ndarray::Array4;
+use opencv::core::{AlgorithmHint, Mat, CV_8UC3, CV_8UC4};
 use rayon::prelude::*;
 
 impl Prepare for Detectors {
@@ -143,5 +144,59 @@ impl Prepare for Detectors {
             .unwrap();
 
         Ok(DynamicImage::ImageRgb8(img_buffer))
+    }
+
+    fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> Result<Mat> {
+        let width = frame.width() as i32;
+        let height = frame.height() as i32;
+        let format = frame.format();
+
+        let data = frame
+            .plane_data(0)
+            .map_err(|e| anyhow!("Failed to get plane data: {:?}", e))?;
+
+        let mat = match format {
+            VideoFormat::Bgra => unsafe {
+                let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
+                    height,
+                    width,
+                    CV_8UC4,
+                    data.as_ptr() as *mut _,
+                )?;
+                mat.clone()
+            },
+            VideoFormat::Rgb => unsafe {
+                let mat = Mat::new_rows_cols_with_data_unsafe_def(
+                    height,
+                    width,
+                    CV_8UC3,
+                    data.as_ptr() as *mut _,
+                )?;
+
+                let mut bgr_mat = Mat::default();
+                opencv::imgproc::cvt_color(
+                    &mat,
+                    &mut bgr_mat,
+                    opencv::imgproc::COLOR_RGB2BGR,
+                    0,
+                    AlgorithmHint::ALGO_HINT_DEFAULT,
+                )?;
+                bgr_mat
+            },
+            VideoFormat::Bgr => unsafe {
+                let mut mat = Mat::new_rows_cols_with_data_unsafe_def(
+                    height,
+                    width,
+                    CV_8UC3,
+                    data.as_ptr() as *mut _,
+                )?;
+                mat.clone()
+            },
+            _ => {
+                return Err(anyhow!("Unsupported video format: {:?}", format));
+            }
+        };
+
+        Ok(mat)
     }
 }

@@ -7,13 +7,13 @@ use gst::prelude::{ElementExtManual, GstBinExt};
 use std::any::type_name_of_val;
 
 use cairo::{Context as CairoContext, Rectangle};
-use inference_core::utils::BoundingBox;
 use gst::{
     Bin, Buffer, Caps, Element, ElementFactory, MessageView, PadProbeData, PadProbeReturn,
     PadProbeType, Pipeline, SeekFlags, SeekType, element_warning, glib,
 };
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
+use inference_core::utils::BoundingBox;
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::Arc;
@@ -348,6 +348,36 @@ impl GstPipeline {
 
                 context.rectangle(x, y, w, h);
                 context.stroke().unwrap();
+
+                if let Some(label) = &bb.label {
+                    context.set_source_rgb(1.0, 1.0, 1.0); // Белый цвет для текста
+                    context.select_font_face(
+                        "Arial",
+                        cairo::FontSlant::Normal,
+                        cairo::FontWeight::Bold,
+                    );
+                    context.set_font_size(12.0);
+
+                    // Рисуем фон для текста
+                    let text_extents = context.text_extents(label).unwrap();
+                    let text_x = x;
+                    let text_y = y - 5.0;
+                    let padding = 2.0;
+
+                    context.set_source_rgba(0.0, 0.0, 0.0, 0.7); // Полупрозрачный черный фон
+                    context.rectangle(
+                        text_x - padding,
+                        text_y - text_extents.height() - padding,
+                        text_extents.width() + 2.0 * padding,
+                        text_extents.height() + 2.0 * padding,
+                    );
+                    context.fill().unwrap();
+
+                    // Рисуем текст
+                    context.set_source_rgb(1.0, 1.0, 1.0); // Белый цвет для текста
+                    context.move_to(text_x, text_y);
+                    context.show_text(label).unwrap();
+                }
             }
 
             None

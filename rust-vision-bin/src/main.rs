@@ -7,7 +7,7 @@ use actix_web::{App, HttpServer, web};
 use anyhow::Result;
 use api::handlers::{day_map, health, organization, processing_job, publish};
 use inference_core::globals::{
-    FACE_DETECTION_MODEL, FACE_RECOGNITION_MODEL, OBJECT_DETECTION_MODEL,
+    FACE_DATABASE, FACE_DETECTION_MODEL, FACE_RECOGNITION_MODEL, OBJECT_DETECTION_MODEL,
 };
 use once_cell::sync::Lazy;
 use project_config::global::PROJECT_CONFIG;
@@ -25,6 +25,7 @@ async fn main() -> Result<()> {
     Lazy::force(&FACE_DETECTION_MODEL);
     Lazy::force(&FACE_RECOGNITION_MODEL);
     Lazy::force(&OBJECT_DETECTION_MODEL);
+    Lazy::force(&FACE_DATABASE);
 
     //
     // WORKERS

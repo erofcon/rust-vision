@@ -1,11 +1,12 @@
 use crate::model::Model;
 use crate::utils::BoundingBox;
+use gst_video::VideoFrame;
+use gst_video::video_frame::Readable;
 use image::DynamicImage;
 use ndarray::{Array, Array4, IxDyn};
+use opencv::core::Mat;
 use ort::session::Session;
 use std::sync::Arc;
-use gst_video::video_frame::Readable;
-use gst_video::VideoFrame;
 
 pub struct FaceDetectors {
     pub detection: Arc<Model>,
@@ -31,6 +32,8 @@ pub trait Prepare {
     fn resize(frame: &DynamicImage, width: u32, height: u32) -> anyhow::Result<DynamicImage>;
 
     fn convert_gst_image_to_dynamic(frame: &VideoFrame<Readable>) -> anyhow::Result<DynamicImage>;
+
+    fn video_frame_to_mat(frame: &VideoFrame<Readable>) -> anyhow::Result<Mat>;
 }
 
 pub trait Inference {
@@ -50,6 +53,9 @@ pub trait Output {
         output: Array<f32, IxDyn>,
         original_img_width: f32,
         original_img_height: f32,
+        prob_threshold: Option<f32>,
         out_classes: Option<&[usize]>,
     ) -> anyhow::Result<Vec<(BoundingBox, usize, f32)>>;
+
+    fn cosine_similarity(vec1: &[f32], vec2: &[f32]) -> anyhow::Result<f32>;
 }
