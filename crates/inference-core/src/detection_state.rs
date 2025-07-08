@@ -1,3 +1,4 @@
+use crate::analyze::{FrameAnalysis, VideoViolationDetector};
 use crate::detectors::{Detectors, Inference, Output, Prepare};
 use crate::globals::FACE_DATABASE;
 use crate::utils::BoundingBox;
@@ -29,6 +30,7 @@ pub struct DetectionState {
     motion: Arc<Mutex<Motion>>,
     detectors: Detectors,
     mode: DetectionMode,
+    viol_detector: VideoViolationDetector,
     frames_without_detection: usize,
     frames_without_motion: usize,
     detection_max_empty_frames: usize,
@@ -39,6 +41,7 @@ impl DetectionState {
     pub fn new(
         motion: Arc<Mutex<Motion>>,
         detectors: Detectors,
+        viol_detector: VideoViolationDetector,
         detection_max_empty_frames: usize,
         motion_max_empty_frames: usize,
     ) -> Self {
@@ -46,6 +49,7 @@ impl DetectionState {
             motion,
             detectors,
             mode: DetectionMode::ObjectsDetection,
+            viol_detector,
             frames_without_detection: 0,
             frames_without_motion: 0,
             detection_max_empty_frames,
@@ -101,7 +105,7 @@ impl DetectionState {
     }
 
     fn detect_objects(
-        &self,
+        &mut self,
         frame: &VideoFrame<Readable>,
         bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
     ) -> Result<bool> {
@@ -152,6 +156,7 @@ impl DetectionState {
 
         let persons = persons_res?;
         let mut faces = faces_res?;
+        let mut recognized_faces = Vec::new();
 
         let face_embeddings: Vec<_> = if let Some(face_models) = &self.detectors.face {
             let model_session = face_models.recognition.get_session();
@@ -231,6 +236,7 @@ impl DetectionState {
 
                         match best_match {
                             Some((name, similarity)) => {
+                                recognized_faces.push(name.trim().to_string());
                                 faces[face_idx].0.label =
                                     Some(format!("{} ({:.0}%)", name, similarity * 100.0));
                                 println!(
@@ -257,12 +263,26 @@ impl DetectionState {
         boxes.clear();
 
         boxes.extend(persons.clone());
-        boxes.extend(faces);
+        boxes.extend(faces.clone());
 
+        let frame_analysis = FrameAnalysis {
+            people_count: persons.len(),
+            faces_detected: faces.len(),
+            recognized_faces,
+        };
+
+        self.viol_detector.add_frame_analysis(frame_analysis);
+
+
+        // self.viol_detector.finalize_and_print_report();
         // let duration = start.elapsed();
 
         // println!("Time elapsed in detect_objects is: {:?}", duration);
 
         Ok(!persons.is_empty())
+    }
+
+    pub fn finalize_detection(&mut self) {
+        self.viol_detector.finalize_and_print_report();
     }
 }

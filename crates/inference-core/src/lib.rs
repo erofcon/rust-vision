@@ -5,3 +5,4 @@ pub mod detectors;
 pub mod detectors_traits;
 pub mod detection_state;
 pub mod face_database;
+pub mod analyze;

@@ -4,6 +4,7 @@ use futures::future::BoxFuture;
 use gst_streaming::pipeline::GstPipeline;
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
+use inference_core::analyze::{FrameAnalysis, VideoViolationDetector, ViolationConfig};
 use inference_core::detection_state::DetectionState;
 use inference_core::detectors::{Detectors, FaceDetectors};
 use inference_core::globals::{
@@ -106,9 +107,19 @@ fn handle_message(
 
             let rtmp_url = format!("rtmp://localhost/live/stream_{}", video_job.id);
             let motion = Arc::new(Mutex::new(Motion::new()?));
+
+            let viol_config = ViolationConfig {
+                max_people_allowed: 2,
+                require_face_recognition: true,
+                min_recognition_percentage: 0.6, // 80%
+            };
+
+            let viol_detector = VideoViolationDetector::new(viol_config);
+
             let detection_state = Arc::new(Mutex::new(DetectionState::new(
                 motion,
                 detectors_struct,
+                viol_detector,
                 24,
                 300,
             )));
@@ -138,7 +149,10 @@ fn handle_message(
                 }
                 run_res = pipeline_handle => {
                     match run_res {
-                        Ok(Ok(())) => Ok(()),
+                        Ok(Ok(())) => {
+                            let d = detection_state.clone();
+                            d.lock().finalize_detection();
+                            Ok(())},
                         Ok(Err(e)) => Err(anyhow!("Pipeline error: {:?}", e)),
                         Err(e) => Err(anyhow!("Join error: {:?}", e)),
                     }
