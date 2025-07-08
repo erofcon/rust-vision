@@ -1,5 +1,4 @@
 pub mod config;
-pub mod detection_state;
 pub mod ort_session;
 pub mod pipeline_registry;
 pub mod utils;

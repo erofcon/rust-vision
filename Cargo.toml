@@ -1,5 +1,5 @@
 ["workspace"]
-members = ["app/bin", "crates/*", "rust-vision-bin"]
+members = ["crates/*", "rust-vision-bin"]
 migrate-path = "migrations"
 
 resolver = "2"

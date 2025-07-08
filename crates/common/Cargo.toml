@@ -12,8 +12,7 @@ motion.workspace = true
 detection.workspace = true
 parking_lot.workspace = true
 rayon.workspace = true
-ndarray.workspace = true
-face-recognition.workspace = true
+
 
 #refactor!
 serde = { version = "1.0.219", features = ["derive"] }
