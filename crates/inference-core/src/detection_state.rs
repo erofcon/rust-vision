@@ -117,7 +117,6 @@ impl DetectionState {
         ) = join(
             || -> Result<Vec<(BoundingBox, usize, f32)>> {
                 if let Some(person_model) = &self.detectors.person {
-                    // let model_guard = person_model;
                     let session = person_model.get_session();
 
                     let inf = Detectors::yolo11_inference(session, prepared.clone())?;
@@ -136,13 +135,12 @@ impl DetectionState {
             },
             || -> Result<Vec<(BoundingBox, usize, f32)>> {
                 if let Some(face_models) = &self.detectors.face {
-                    // let det_guard = face_models.detection.read();
                     let det_session = face_models.detection.get_session();
 
                     let inf = Detectors::yolo11_inference(det_session, prepared.clone())?;
 
                     let faces =
-                        Detectors::process_yolo11s_output(inf, 640f32, 640f32, Some(0.6), None)?;
+                        Detectors::process_yolo11s_output(inf, 640f32, 640f32, Some(0.4), None)?;
 
                     Ok(faces)
                 } else {
@@ -178,7 +176,7 @@ impl DetectionState {
                 match face_embedding_result {
                     Ok(face_embedding) => {
                         let mut best_match: Option<(String, f32)> = None;
-                        let similarity_threshold = 0.6;
+                        let similarity_threshold = 0.7;
 
                         for person in &face_database.people {
                             let mut max_similarity = 0.0f32;
@@ -230,12 +228,12 @@ impl DetectionState {
                             Some((name, similarity)) => {
                                 faces[face_idx].0.label =
                                     Some(format!("{} ({:.0}%)", name, similarity * 100.0));
-                                // println!(
-                                //     "Face {} recognized how: {} (cosine_similarity: {:.2}%)",
-                                //     face_idx,
-                                //     name,
-                                //     similarity * 100.0
-                                // );
+                                println!(
+                                    "Face {} recognized how: {} (cosine_similarity: {:.2}%)",
+                                    face_idx,
+                                    name,
+                                    similarity * 100.0
+                                );
                             }
                             None => {
                                 // println!("Face {} not recognized", face_idx);

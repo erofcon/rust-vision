@@ -14,6 +14,7 @@ async fn main() -> Result<(), Error> {
 
     let migrations_path = Path::new(&config.database.migrations_path);
 
+
     if !migrations_path.exists() {
         return Err(Error::msg("Migrations directory not found"));
     };

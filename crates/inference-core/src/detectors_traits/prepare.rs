@@ -1,12 +1,15 @@
 use crate::detectors::{Detectors, Prepare};
 use crate::utils::{BoundingBox, img_to_rgb8};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
+use fast_image_resize::images::Image;
+use fast_image_resize::{PixelType, Resizer};
 use gst_video::video_frame::Readable;
 use gst_video::{VideoFormat, VideoFrame, VideoFrameExt};
 use image::{DynamicImage, ImageBuffer, Rgb};
 use ndarray::Array4;
-use opencv::core::{AlgorithmHint, Mat, CV_8UC3, CV_8UC4};
+use opencv::core::{AlgorithmHint, CV_8UC3, CV_8UC4, Mat};
 use rayon::prelude::*;
+use std::time::Instant;
 
 impl Prepare for Detectors {
     fn prepare_dynamic_image_for_yolo11s(
@@ -108,9 +111,34 @@ impl Prepare for Detectors {
         Ok(image.crop_imm(x1, y1, x2 - x1, y2 - y1))
     }
 
+    // fn resize(frame: &DynamicImage, width: u32, height: u32) -> Result<DynamicImage> {
+    //     // 8-9 ms
+    //     let start = Instant::now();
+    //     // TODO: use a faster way
+    //     let r = Ok(frame.resize_exact(width, height, image::imageops::FilterType::Lanczos3));
+    //
+    //     let duration = start.elapsed();
+    //     println!("Resizing to: {:?}", duration);
+    //
+    //     r
+    // }
+
     fn resize(frame: &DynamicImage, width: u32, height: u32) -> Result<DynamicImage> {
-        // TODO: use a faster way
-        Ok(frame.resize_exact(width, height, image::imageops::FilterType::Nearest))
+        let src_img = Image::from_vec_u8(
+            frame.width(),
+            frame.height(),
+            frame.to_rgba8().into_raw(),
+            PixelType::U8x4,
+        )?;
+
+        let mut dst_image = Image::new(width, height, PixelType::U8x4);
+
+        let mut resize = Resizer::new();
+        resize.resize(&src_img, &mut dst_image, None)?;
+
+        Ok(DynamicImage::ImageRgba8(
+            ImageBuffer::from_raw(width, height, dst_image.into_vec()).unwrap(),
+        ))
     }
 
     fn convert_gst_image_to_dynamic(frame: &VideoFrame<Readable>) -> Result<DynamicImage> {

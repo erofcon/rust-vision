@@ -19,6 +19,7 @@ project-config.workspace = true
 gst-video.workspace = true
 opencv.workspace = true
 motion.workspace = true
+fast_image_resize.workspace = true
 
 
 [features]

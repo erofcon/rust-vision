@@ -48,6 +48,8 @@ impl GstPipeline {
 
         let video_convert = ElementFactory::make("videoconvert").build()?;
         let process_videoscale = ElementFactory::make("videoscale").build()?;
+        process_videoscale.set_property_from_str("method", "lanczos");
+        process_videoscale.set_property("add-borders", true);
 
         /*
         let fps = 30; // базовая частота кадров
@@ -61,7 +63,7 @@ impl GstPipeline {
         */
 
         let caps = Caps::builder(glib::gstr!("video/x-raw"))
-            .field("format", gst_video::VideoFormat::Rgb.to_str())
+            .field("format", gst_video::VideoFormat::Bgr.to_str())
             .field("width", 640)
             .field("height", 640)
             .build();
