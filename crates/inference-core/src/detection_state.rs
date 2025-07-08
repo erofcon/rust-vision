@@ -7,6 +7,7 @@ use gst_video::video_frame::Readable;
 use gst_video::{VideoFrame, VideoFrameExt, gst};
 use motion::motion::Motion;
 use parking_lot::Mutex;
+use project_config::global::PROJECT_CONFIG;
 use rayon::join;
 use rayon::prelude::*;
 use std::sync::Arc;
@@ -104,7 +105,7 @@ impl DetectionState {
         frame: &VideoFrame<Readable>,
         bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
     ) -> Result<bool> {
-        let start = Instant::now();
+        // let start = Instant::now();
 
         let image = Detectors::convert_gst_image_to_dynamic(frame)?;
 
@@ -159,7 +160,10 @@ impl DetectionState {
                 .filter_map(|(bbox, _class, _prob)| Detectors::crop_face(&image, bbox).ok())
                 .map(|crop| {
                     // TODO: get WxH from config
-                    let img = Detectors::resize(&crop, 160, 160)?;
+                    let width = &PROJECT_CONFIG.face_recognition_model.input_width;
+                    let height = &PROJECT_CONFIG.face_recognition_model.input_height;
+
+                    let img = Detectors::resize(&crop, *width, *height)?;
                     let prep = Detectors::preprocess_image_for_recognition(&img)
                         .map_err(|e| anyhow!("prep failed: {:?}", e))?;
                     Detectors::extract_face_embedding(model_session, prep)
@@ -176,7 +180,8 @@ impl DetectionState {
                 match face_embedding_result {
                     Ok(face_embedding) => {
                         let mut best_match: Option<(String, f32)> = None;
-                        let similarity_threshold = 0.7;
+                        let similarity_threshold =
+                            &PROJECT_CONFIG.face_database.similarity_threshold;
 
                         for person in &face_database.people {
                             let mut max_similarity = 0.0f32;
@@ -209,7 +214,7 @@ impl DetectionState {
                                 }
                             }
 
-                            if max_similarity > similarity_threshold {
+                            if max_similarity > *similarity_threshold {
                                 match &best_match {
                                     Some((_, current_best_similarity)) => {
                                         if max_similarity > *current_best_similarity {
@@ -254,7 +259,7 @@ impl DetectionState {
         boxes.extend(persons.clone());
         boxes.extend(faces);
 
-        let duration = start.elapsed();
+        // let duration = start.elapsed();
 
         // println!("Time elapsed in detect_objects is: {:?}", duration);
 

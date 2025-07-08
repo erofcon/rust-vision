@@ -66,14 +66,15 @@ pub struct FaceDetectionModel {
 #[derive(Debug, Deserialize, Clone)]
 pub struct FaceRecognitionModel {
     pub path: String,
-    pub input_width: i32,
-    pub input_height: i32,
+    pub input_width: u32,
+    pub input_height: u32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct FaceDatabase {
     pub path: String,
     pub db_file: String,
+    pub similarity_threshold: f32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -94,7 +95,6 @@ pub struct ProjectConfig {
 }
 
 impl ProjectConfig {
-
     pub fn load() -> Result<ProjectConfig, ConfigError> {
         let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "debug".into());
         let config_dir = env::var("CONFIG_DIR").unwrap_or_else(|_| "config".to_string());
@@ -117,24 +117,6 @@ impl ProjectConfig {
 
         Ok(project_config)
     }
-
-    // pub fn load() -> Result<ProjectConfig, ConfigError> {
-    //     let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "debug".into());
-    //     let config_dir = env::var("CONFIG_DIR").unwrap_or_else(|_| "config".to_string());
-    //     let config_path = Path::new(&config_dir);
-    //
-    //     if !config_path.exists() {
-    //         return Err(ConfigError::NotFound(format!(
-    //             "Common configuration directory not found: {}",
-    //             config_path.display()
-    //         )));
-    //     };
-    //
-    //     let file = config_path.join(format!("{}.toml", run_mode));
-    //     let config = Config::builder().add_source(File::from(file)).build()?;
-    //
-    //     config.try_deserialize()
-    // }
 
     fn find_project_root() -> Result<PathBuf, ConfigError> {
         env::current_dir()
@@ -162,5 +144,4 @@ impl ProjectConfig {
             }
         }
     }
-
 }

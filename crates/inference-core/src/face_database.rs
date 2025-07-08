@@ -105,7 +105,6 @@ impl FaceDatabase {
                     continue;
                 }
 
-                // Проверяем, что это изображение
                 if let Some(ext) = p.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
                     if !["jpg", "jpeg", "png", "bmp", "gif", "tiff"].contains(&ext_str.as_str()) {
