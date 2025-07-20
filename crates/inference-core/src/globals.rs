@@ -14,6 +14,7 @@ pub static OBJECT_DETECTION_MODEL: Lazy<Arc<Model>> = Lazy::new(|| {
 
 pub static FACE_DETECTION_MODEL: Lazy<Arc<Model>> = Lazy::new(|| {
     let path = &PROJECT_CONFIG.face_detection_model.path;
+    println!("{}", path);
     let model = Model::new(&path).expect("Failed to load face detection model");
 
     Arc::new(model)

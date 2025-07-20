@@ -43,12 +43,30 @@ RUN cd /tmp/build/nginx/${NGINX_VERSION} && \
     mkdir /var/lock/nginx && \
     rm -rf /tmp/build
 
+# Create directories for HLS/DASH and web content
+RUN mkdir -p /var/www/html && \
+    mkdir -p /tmp/hls && \
+    mkdir -p /tmp/dash && \
+    mkdir -p /usr/share/nginx/html
+
 # Forward logs to Docker
 RUN ln -sf /dev/stdout /var/log/nginx/access.log && \
     ln -sf /dev/stderr /var/log/nginx/error.log
 
-# Set up config file
+# Copy configuration files
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY streams.html /var/www/html/index.html
+COPY streams.html /var/www/html/streams.html
 
-EXPOSE 1935
+# Copy nginx stat stylesheet (optional)
+COPY stat.xsl /usr/share/nginx/html/stat.xsl
+
+# Set permissions
+RUN chmod -R 755 /var/www/html && \
+    chmod -R 777 /tmp/hls && \
+    chmod -R 777 /tmp/dash
+
+# Expose both RTMP and HTTP ports
+EXPOSE 1935 8888
+
 CMD ["nginx", "-g", "daemon off;"]

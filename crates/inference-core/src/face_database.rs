@@ -1,12 +1,14 @@
 use crate::detectors::{Detectors, Inference, Output, Prepare};
 use crate::globals::{FACE_DETECTION_MODEL, FACE_RECOGNITION_MODEL};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use image::GenericImageView;
 use project_config::global::PROJECT_CONFIG;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use opencv::imgcodecs;
+use opencv::prelude::MatTraitConst;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabasePerson {
@@ -86,6 +88,8 @@ impl FaceDatabase {
         let base_dir = &PROJECT_CONFIG.face_database.path;
         let face_models = FACE_DETECTION_MODEL.get_session();
         let face_recognition_model = FACE_RECOGNITION_MODEL.get_session();
+        let target_width = PROJECT_CONFIG.face_detection_model.input_width.clone() as usize;
+        let target_height = PROJECT_CONFIG.face_detection_model.input_height.clone() as usize;
 
         for entry in fs::read_dir(base_dir)? {
             let path = entry?.path();
@@ -112,9 +116,9 @@ impl FaceDatabase {
                     }
                 }
 
-                println!("  Processing image: {:?}", p);
+                println!("Processing image: {:?}", p.to_str().unwrap());
 
-                let img = match image::open(&p) {
+                let image = match imgcodecs::imread(p.to_str().unwrap(), imgcodecs::IMREAD_COLOR) {
                     Ok(img) => img,
                     Err(e) => {
                         eprintln!("  Error opening image {:?}: {}", p, e);
@@ -122,47 +126,34 @@ impl FaceDatabase {
                     }
                 };
 
-                let prepare = match Detectors::prepare_dynamic_image_for_yolo11s(&img) {
-                    Ok(prep) => prep,
-                    Err(e) => {
-                        eprintln!("  Error preparing image {:?}: {}", p, e);
-                        continue;
-                    }
-                };
+                let width = image.cols();
+                let height = image.rows();
 
-                let inference = match Detectors::yolo11_inference(face_models, prepare) {
-                    Ok(inf) => inf,
-                    Err(e) => {
-                        eprintln!("  Error in face detection for {:?}: {}", p, e);
-                        continue;
-                    }
-                };
+                let (resized_img, scale, pad_x, pad_y) =
+                    Detectors::resize_mat_with_padding(&image)?;
 
-                let results = match Detectors::process_yolo11s_output(
-                    inference,
-                    img.width() as f32,
-                    img.height() as f32,
-                    None,
-                    None,
-                ) {
-                    Ok(res) => res,
-                    Err(e) => {
-                        eprintln!("  Error processing detection output for {:?}: {}", p, e);
-                        continue;
-                    }
-                };
+                let prepared =
+                    Detectors::prepare_mat_img(&resized_img, target_width, target_height)
+                        .map_err(|e| anyhow!("prepare_dynamic_image failed: {:?}", e))?;
 
-                if results.is_empty() {
-                    println!("  No faces detected in {:?}", p);
+                let results = Detectors::inference(face_models, prepared)?;
+
+                let detections =
+                    Detectors::process_detections(&results, width, height, scale, pad_x, pad_y)?;
+
+                if detections.is_empty() {
+                    println!("No faces detected in {:?}", p);
                     continue;
                 }
 
-                let best_face = results
-                    .iter()
-                    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                let best_face = detections.iter().max_by(|a, b| {
+                    a.confidence
+                        .partial_cmp(&b.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
 
-                if let Some(face) = best_face {
-                    let crop = match Detectors::crop_face(&img, &face.0) {
+                if let Some(detection) = best_face {
+                    let crop_face = match Detectors::crop_detection(&image, &detection) {
                         Ok(crop) => crop,
                         Err(e) => {
                             eprintln!("  Error cropping face from {:?}: {}", p, e);
@@ -170,13 +161,22 @@ impl FaceDatabase {
                         }
                     };
 
-                    let prepare_rec = match Detectors::preprocess_image_for_recognition(&crop) {
-                        Ok(prep) => prep,
-                        Err(e) => {
-                            eprintln!("  Error preprocessing for recognition {:?}: {}", p, e);
-                            continue;
-                        }
-                    };
+                    let aligned_face = Detectors::align_face(&crop_face, detection)?;
+
+                    let rec_model_w = PROJECT_CONFIG.face_recognition_model.input_width as i32;
+                    let rec_model_h = PROJECT_CONFIG.face_recognition_model.input_height as i32;
+
+                    let recognition_face =
+                        Detectors::resize_mat(&aligned_face, rec_model_w, rec_model_h)?;
+
+                    let prepare_rec =
+                        match Detectors::preprocess_image_for_recognition_mat(&recognition_face) {
+                            Ok(prep) => prep,
+                            Err(e) => {
+                                eprintln!("  Error preprocessing for recognition {:?}: {}", p, e);
+                                continue;
+                            }
+                        };
 
                     let emb = match Detectors::extract_face_embedding(
                         face_recognition_model,

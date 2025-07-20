@@ -182,7 +182,7 @@ fn handle_message(
 fn process_buffer(
     buffer: &VideoFrame<Readable>,
     state: &Arc<Mutex<DetectionState>>,
-    bounding_box: &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+    bounding_box: &Arc<Mutex<Vec<BoundingBox>>>,
 ) -> Result<()> {
     let mut state_guard = state.lock();
     let _ = state_guard.process_frame(buffer, bounding_box)?;

@@ -23,9 +23,9 @@ input_width = 640
 input_height = 640
 
 [face_detection_model]
-path = "models/yolov11s-face.onnx"
-input_width = 640
-input_height = 640
+path = "models/yolo11s-pose_widerface.onnx"
+input_width = 800
+input_height = 800
 
 [face_recognition_model]
 path = "models/face-recognition.onnx"

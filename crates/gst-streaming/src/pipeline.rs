@@ -24,14 +24,14 @@ pub struct GstPipeline {
     pipeline: Pipeline,
     overlay: Element,
     should_stop: Arc<AtomicBool>,
-    bounding_box: Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>,
+    bounding_box: Arc<Mutex<Vec<BoundingBox>>>,
 }
 
 impl GstPipeline {
     pub fn new(
         file_path: &str,
         rtmp_url: &str,
-        buffer_processor: impl Fn(&VideoFrame<Readable>, &Arc<Mutex<Vec<(BoundingBox, usize, f32)>>>)
+        buffer_processor: impl Fn(&VideoFrame<Readable>, &Arc<Mutex<Vec<BoundingBox>>>)
         + Send
         + Sync
         + 'static,
@@ -64,8 +64,8 @@ impl GstPipeline {
 
         let caps = Caps::builder(glib::gstr!("video/x-raw"))
             .field("format", gst_video::VideoFormat::Bgr.to_str())
-            .field("width", 640)
-            .field("height", 640)
+            // .field("width", 640)
+            // .field("height", 640)
             .build();
 
         let caps_filter = ElementFactory::make_with_name("capsfilter", None)?;
@@ -340,44 +340,52 @@ impl GstPipeline {
 
             let boxes = bbox_arc.lock();
 
-            context.set_line_width(1.0);
-            context.set_source_rgb(1.0, 0.0, 0.0);
 
-            for (bb, _cls, _prob) in boxes.iter() {
+
+            for bb in boxes.iter() {
                 let x = bb.x1 as f64;
                 let y = bb.y1 as f64;
                 let w = (bb.x2 - bb.x1) as f64;
                 let h = (bb.y2 - bb.y1) as f64;
 
+                if let Some(_) = &bb.label{
+                    context.set_line_width(3.0);
+                    context.set_source_rgb(0.0, 1.0, 0.0);
+                }else {
+                    context.set_line_width(3.0);
+                    context.set_source_rgb(1.0, 0.0, 0.0);
+                }
+
+
                 context.rectangle(x, y, w, h);
                 context.stroke().unwrap();
 
                 if let Some(label) = &bb.label {
-                    context.set_source_rgb(1.0, 1.0, 1.0); // Белый цвет для текста
+                    context.set_source_rgb(1.0, 1.0, 1.0);
                     context.select_font_face(
                         "Arial",
                         cairo::FontSlant::Normal,
                         cairo::FontWeight::Bold,
                     );
-                    context.set_font_size(12.0);
+                    context.set_font_size(16.0);
 
-                    // Рисуем фон для текста
                     let text_extents = context.text_extents(label).unwrap();
                     let text_x = x;
                     let text_y = y - 5.0;
                     let padding = 2.0;
 
-                    context.set_source_rgba(0.0, 0.0, 0.0, 0.7); // Полупрозрачный черный фон
+                    context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
                     context.rectangle(
                         text_x - padding,
                         text_y - text_extents.height() - padding,
                         text_extents.width() + 2.0 * padding,
                         text_extents.height() + 2.0 * padding,
                     );
+
                     context.fill().unwrap();
 
                     // Рисуем текст
-                    context.set_source_rgb(1.0, 1.0, 1.0); // Белый цвет для текста
+                    context.set_source_rgba(0.0, 0.0, 0.0, 1.0); // Белый цвет для текста
                     context.move_to(text_x, text_y);
                     context.show_text(label).unwrap();
                 }
@@ -413,7 +421,7 @@ impl GstPipeline {
         Ok(())
     }
 
-    pub fn get_bounding_boxes(&self) -> Arc<Mutex<Vec<(BoundingBox, usize, f32)>>> {
+    pub fn get_bounding_boxes(&self) -> Arc<Mutex<Vec<BoundingBox>>> {
         Arc::clone(&self.bounding_box)
     }
 }

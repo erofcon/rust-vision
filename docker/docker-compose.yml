@@ -2,8 +2,26 @@ version: "3.9"
 services:
   rtmp_server:
     build: .
+    container_name: nginx-rtmp-server
     ports:
-      - "1935:1935"
+      - "1935:1935"  # RTMP порт
+      - "8888:8888"  # HTTP порт для веб-плеера
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./index.html:/var/www/html/index.html:ro
+      - ./streams.html:/var/www/html/streams.html:ro
+      - ./stat.xsl:/usr/share/nginx/html/stat.xsl:ro
+      - hls_data:/tmp/hls
+      - dash_data:/tmp/dash
+    restart: unless-stopped
+    environment:
+      - NGINX_ENVSUBST_TEMPLATE_DIR=/etc/nginx/templates
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8888/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   rabbitmq:
     image: rabbitmq:3.6-management-alpine
@@ -33,3 +51,5 @@ services:
 volumes:
   rabbitmq_data:
   postgres_data:
+  hls_data:
+  dash_data:

@@ -1,0 +1,17 @@
+[package]
+name = "face-recognition"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+opencv.workspace = true
+image.workspace = true
+anyhow.workspace = true
+ort.workspace = true
+ndarray.workspace = true
+rust-faces = { version = "1.0.0", features = ["viz"] }
+
+
+[features]
+load-dynamic = ["ort/load-dynamic"]
+cuda = ["ort/cuda"]
