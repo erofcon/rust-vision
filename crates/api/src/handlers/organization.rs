@@ -2,7 +2,7 @@ use crate::error::ApiError;
 use actix_web::{post, web, HttpResponse, Responder};
 use anyhow::Result;
 use sqlx::{Pool, Postgres};
-use storage::models::organization::{CreateCameraPreset, CreateOrganization};
+use storage::models::organization::{CameraPreset, CreateCameraPreset, CreateOrganization};
 use storage::repositories::organization_repository::OrganizationRepository;
 
 #[post("/api/v1/create/organization")]
@@ -30,10 +30,10 @@ async fn create_camera_preset(
         "detectors": ["face", "person"],
         "regions": {
             "face": {
-                "x": 12,
-                "y":90,
-                "w": 23,
-                "h": 98
+                "x1": 12,
+                "y1":90,
+                "x2": 23,
+                "y2": 98
             }
         }
     }

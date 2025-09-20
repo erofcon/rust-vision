@@ -30,7 +30,9 @@ async fn process_publish(
             | ProcessingStatus::Failed
             | ProcessingStatus::Cancelled
             | ProcessingStatus::Completed => {
-                let payload = Payload { id: video_job.id };
+                let payload = Payload {
+                    video_job_id: video_job.id,
+                };
                 let bytes = payload
                     .serialize()
                     .context("Failed to serialize payload")

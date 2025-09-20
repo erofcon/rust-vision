@@ -1,0 +1,35 @@
+version: "3.9"
+services:
+  rtmp_server:
+    build: .
+    ports:
+      - "1935:1935"
+
+  rabbitmq:
+    image: rabbitmq:3.6-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5432:5432"
+
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+
+volumes:
+  rabbitmq_data:
+  postgres_data:

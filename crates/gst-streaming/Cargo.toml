@@ -13,3 +13,5 @@ motion.workspace = true
 detection.workspace = true
 storage.workspace = true
 parking_lot.workspace = true
+cairo-rs.workspace = true
+inference-core.workspace = true

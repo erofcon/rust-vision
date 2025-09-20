@@ -17,10 +17,28 @@ port = 5672
 user = "guest"
 password = "guest"
 
-[base_detection_model]
+[object_detection_model]
 path = "models/yolo11s.onnx"
 input_width = 640
 input_height = 640
 
+[face_detection_model]
+path = "models/yolo11s-pose_widerface.onnx"
+input_width = 800
+input_height = 800
+
+[face_recognition_model]
+path = "models/face-recognition.onnx"
+input_width = 160
+input_height = 160
+
+
+[face_database]
+path = "assets/face_database"
+db_file = "assets/face_database.json"
+similarity_threshold = 0.7
+
 [worker]
-worker_count = 2
+worker_count = 1
+
+

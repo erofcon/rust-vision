@@ -115,10 +115,18 @@ async fn create_processing_job(
                     })?;
 
                 let org_repo = OrganizationRepository::new(pool.clone());
-                let camera_preset = org_repo
-                    .get_camera_preset_by_name(&channel)
-                    .await?
-                    .ok_or(ApiError::NotFound)?;
+                let camera_preset_opt = org_repo.get_camera_preset_by_name(&channel).await?;
+
+                let camera_preset = match camera_preset_opt {
+                    Some(p) => p,
+                    None => {
+                        println!(
+                            "No camera preset for channel '{}', пропускаем видео '{}'",
+                            channel, video_name
+                        );
+                        continue;
+                    }
+                };
 
                 let video_job = VideoJobCreate {
                     processing_jobs_id: process_result.id,
@@ -136,6 +144,12 @@ async fn create_processing_job(
     for video_job in video_jobs {
         let created = process.create_video_job(&video_job).await?;
         created_video_jobs.push(created);
+    }
+
+    if created_video_jobs.is_empty() {
+        return Err(ApiError::BadRequest(
+            "No videos found with correct channel".into(),
+        ));
     }
 
     Ok(HttpResponse::Created().json(ProcessingJobResponse {

@@ -6,29 +6,41 @@ use gst::prelude::{
 use gst::prelude::{ElementExtManual, GstBinExt};
 use std::any::type_name_of_val;
 
+use cairo::{Context as CairoContext, Rectangle};
 use gst::{
     Bin, Buffer, Caps, Element, ElementFactory, MessageView, PadProbeData, PadProbeReturn,
     PadProbeType, Pipeline, SeekFlags, SeekType, element_warning, glib,
 };
 use gst_video::VideoFrame;
 use gst_video::video_frame::Readable;
+use inference_core::utils::BoundingBox;
+use parking_lot::Mutex;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct GstPipeline {
     pipeline: Pipeline,
+    overlay: Element,
     should_stop: Arc<AtomicBool>,
+    bounding_box: Arc<Mutex<Vec<BoundingBox>>>,
 }
 
 impl GstPipeline {
     pub fn new(
         file_path: &str,
         rtmp_url: &str,
-        buffer_processor: impl Fn(&VideoFrame<Readable>) + Send + Sync + 'static,
+        buffer_processor: impl Fn(&VideoFrame<Readable>, &Arc<Mutex<Vec<BoundingBox>>>)
+        + Send
+        + Sync
+        + 'static,
     ) -> Result<Self> {
         let pipeline = Pipeline::new();
+
+        let bounding_box = Arc::new(Mutex::new(Vec::new()));
+
+        let bounding_box_clone = Arc::clone(&bounding_box);
 
         // let file_info = discover::discover(&file_path)?;
 
@@ -36,6 +48,8 @@ impl GstPipeline {
 
         let video_convert = ElementFactory::make("videoconvert").build()?;
         let process_videoscale = ElementFactory::make("videoscale").build()?;
+        process_videoscale.set_property_from_str("method", "lanczos");
+        process_videoscale.set_property("add-borders", true);
 
         /*
         let fps = 30; // базовая частота кадров
@@ -50,9 +64,10 @@ impl GstPipeline {
 
         let caps = Caps::builder(glib::gstr!("video/x-raw"))
             .field("format", gst_video::VideoFormat::Bgr.to_str())
-            .field("width", 640)
-            .field("height", 640)
+            // .field("width", 640)
+            // .field("height", 640)
             .build();
+
         let caps_filter = ElementFactory::make_with_name("capsfilter", None)?;
         caps_filter.set_property("caps", &caps);
 
@@ -75,7 +90,7 @@ impl GstPipeline {
                     .map_err(|_| gst::FlowError::Error)
                     .unwrap();
 
-                buffer_processor(&frame);
+                buffer_processor(&frame, &bounding_box_clone);
             }
 
             PadProbeReturn::Ok
@@ -122,12 +137,16 @@ impl GstPipeline {
 
         Ok(GstPipeline {
             pipeline,
+            overlay,
             should_stop: Arc::new(AtomicBool::new(false)),
+            bounding_box,
         })
     }
 
     pub fn run(&mut self) -> Result<()> {
         let should_stop = self.should_stop.clone();
+
+        self.draw();
 
         self.pipeline.set_state(gst::State::Playing)?;
 
@@ -167,30 +186,6 @@ impl GstPipeline {
                 }
             }
         }
-
-        // for msg in bus.iter_timed(gst::ClockTime::NONE) {
-        //     match msg.view() {
-        //         MessageView::Eos(..) => {
-        //             println!("EOS message received, finishing processing");
-        //             break;
-        //         }
-        //         MessageView::Error(err) => {
-        //             let error = err.error();
-        //             let debug = err.debug();
-        //             println!("Error: {}, debug: {:?}", error, debug);
-        //             return Err(anyhow!("GStreamer error: {}", error));
-        //         }
-        //         MessageView::StateChanged(state) => {
-        //             if state.src() == Some(self.pipeline.upcast_ref::<gst::Object>()) {
-        //                 let old = state.old();
-        //                 let new = state.current();
-        //                 println!("Pipeline has changed its state: {:?} -> {:?}", old, new);
-        //             }
-        //         }
-        //         _ => {}
-        //         _ => (),
-        //     }
-        // }
 
         self.pipeline.set_state(gst::State::Null)?;
         Ok(())
@@ -336,6 +331,70 @@ impl GstPipeline {
         Ok(())
     }
 
+    fn draw(&self) {
+        let bbox_arc = self.bounding_box.clone();
+        self.overlay.connect("draw", false, move |args| {
+            let context = args[1]
+                .get::<CairoContext>()
+                .expect("Invalid Cairo context in draw callback");
+
+            let boxes = bbox_arc.lock();
+
+
+
+            for bb in boxes.iter() {
+                let x = bb.x1 as f64;
+                let y = bb.y1 as f64;
+                let w = (bb.x2 - bb.x1) as f64;
+                let h = (bb.y2 - bb.y1) as f64;
+
+                if let Some(_) = &bb.label{
+                    context.set_line_width(3.0);
+                    context.set_source_rgb(0.0, 1.0, 0.0);
+                }else {
+                    context.set_line_width(3.0);
+                    context.set_source_rgb(1.0, 0.0, 0.0);
+                }
+
+
+                context.rectangle(x, y, w, h);
+                context.stroke().unwrap();
+
+                if let Some(label) = &bb.label {
+                    context.set_source_rgb(1.0, 1.0, 1.0);
+                    context.select_font_face(
+                        "Arial",
+                        cairo::FontSlant::Normal,
+                        cairo::FontWeight::Bold,
+                    );
+                    context.set_font_size(16.0);
+
+                    let text_extents = context.text_extents(label).unwrap();
+                    let text_x = x;
+                    let text_y = y - 5.0;
+                    let padding = 2.0;
+
+                    context.set_source_rgba(1.0, 1.0, 1.0, 1.0);
+                    context.rectangle(
+                        text_x - padding,
+                        text_y - text_extents.height() - padding,
+                        text_extents.width() + 2.0 * padding,
+                        text_extents.height() + 2.0 * padding,
+                    );
+
+                    context.fill().unwrap();
+
+                    // Рисуем текст
+                    context.set_source_rgba(0.0, 0.0, 0.0, 1.0); // Белый цвет для текста
+                    context.move_to(text_x, text_y);
+                    context.show_text(label).unwrap();
+                }
+            }
+
+            None
+        });
+    }
+
     pub fn get_stop_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.should_stop)
     }
@@ -360,5 +419,9 @@ impl GstPipeline {
         self.pipeline.set_state(gst::State::Null)?;
 
         Ok(())
+    }
+
+    pub fn get_bounding_boxes(&self) -> Arc<Mutex<Vec<BoundingBox>>> {
+        Arc::clone(&self.bounding_box)
     }
 }
